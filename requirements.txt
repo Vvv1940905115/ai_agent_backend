@@ -1,0 +1,26 @@
+# ============ AI Agent 业务后端依赖清单 ============
+# Web 框架
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+# pydantic / pydantic-settings 不锁旧版本：Python 3.13 需要带 cp313 预编译 wheel 的新版
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# LLM / 大模型（豆包、DeepSeek、通义千问均为 OpenAI 兼容接口）
+openai==1.40.0
+
+# HTTP 客户端（集成飞书/企微/抓取均使用）
+httpx==0.27.0
+beautifulsoup4==4.12.3
+
+# 向量计算（Python 3.13 需 numpy>=2.0 才有预编译 wheel）
+numpy==2.1.3
+
+# 重试/退避（视频生成 API 限流 429 指数退避）
+tenacity==8.5.0
+
+# 配置 / 日志
+python-dotenv==1.0.1
+
+# 测试
+pytest==8.2.2

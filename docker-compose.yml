@@ -1,0 +1,28 @@
+# ============ docker-compose：AI Agent 业务后端 ============
+# 用法：
+#   cp .env.example .env   # 填入密钥
+#   docker compose up -d --build
+#   curl http://localhost:8000/health
+services:
+  web:
+    build: .
+    image: ai-agent-backend:1.0.0
+    container_name: ai-agent-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env            # 从宿主机 .env 注入所有密钥（请勿提交到 git）
+    environment:
+      # 也可在此覆盖，优先级高于 env_file
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    volumes:
+      # 持久化向量库与日志，容器重建不丢数据
+      - ./data/vector_store:/app/data/vector_store
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

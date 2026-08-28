@@ -1,0 +1,109 @@
+"""
+AI 选题能力（TopicSelector）
+
+核心职责：
+- 基于「知识库检索结果 + 已解析短视频数据」作为上下文，调用大模型批量产出
+  短视频选题、标题、脚本大纲。
+- 支持指定行业(industry)、风格(style)、数量(count)。
+- 产出结构化选题列表（JSON），便于入库多维表格、人工审核、进入下一环节。
+- 提供 build_video_prompt：把优质选题组装成「文生视频/图生视频」所需提示词，
+  打通 选题 -> 脚本 -> 生成视频 的链路。
+
+风格与现有 analyzer 一致：让 LLM 返回严格 JSON，做容错解析。
+"""
+import json
+import uuid
+
+from app.agent.llm import get_active_llm
+from app.core.logging import get_logger
+
+logger = get_logger("topic.selector")
+
+_TOPIC_SYSTEM = (
+    "你是一名资深短视频内容策划。基于给定【行业/风格/参考素材】，批量产出短视频选题。"
+    "必须输出严格 JSON 数组，每个元素包含字段："
+    '{"title":"吸睛标题","topic":"核心选题角度","script_outline":"分镜脚本大纲(3-5步，含画面与口播)",'
+    '"tags":["标签1","标签2"],"hook":"开头3秒钩子文案","target_audience":"目标人群","angle":"差异点"}。'
+    "只输出 JSON 数组，不要输出其它任何内容。"
+)
+
+
+def _extract_json_array(text: str) -> list:
+    """从 LLM 输出中容错提取 JSON 数组（截取第一个 [ 到最后一个 ]）。"""
+    text = (text or "").strip()
+    start, end = text.find("["), text.rfind("]")
+    if start == -1 or end == -1:
+        raise ValueError("LLM 未返回可用的 JSON 数组")
+    return json.loads(text[start:end + 1])
+
+
+class TopicSelector:
+    def __init__(self):
+        self.llm = get_active_llm()  # 缺 key 时抛 RuntimeError（与现有 LLM 层一致）
+
+    def generate_topics(self, industry: str, style: str = "", count: int = 5,
+                        context: str = "", hotspots: str = "") -> list[dict]:
+        """
+        生成选题列表。
+
+        :param context: 参考素材（知识库检索片段 / 已解析短视频分析结论），提升相关性
+        :param hotspots: 热点线索（可选），如热搜词
+        """
+        ctx_block = ""
+        if context:
+            ctx_block += f"\n【参考素材/企业知识】\n{context}\n"
+        if hotspots:
+            ctx_block += f"\n【近期热点】\n{hotspots}\n"
+
+        user_msg = (
+            f"行业：{industry}\n风格：{style or '不限'}\n需要数量：{count}\n"
+            f"{ctx_block}"
+            "请基于以上信息产出具有传播力的短视频选题。"
+        )
+        resp = self.llm.chat(
+            messages=[
+                {"role": "system", "content": _TOPIC_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.8,  # 选题需要一定发散性
+            max_tokens=2000,
+        )
+        content = resp.choices[0].message.content or "[]"
+        topics = _extract_json_array(content)
+        # 为每个选题补充稳定 id，便于审核/追踪
+        for t in topics:
+            t.setdefault("id", str(uuid.uuid4())[:8])
+        logger.info("生成选题 %d 条 (行业=%s, 风格=%s)", len(topics), industry, style)
+        return topics
+
+    def generate_from_knowledge(self, industry: str, style: str = "", count: int = 5,
+                               query: str | None = None) -> list[dict]:
+        """从企业知识库检索相关片段作为上下文，再生成选题（RAG 驱动）。"""
+        from app.knowledge.ingest import search_knowledge
+        hits = search_knowledge(query or industry, top_k=5)
+        context = "\n".join(f"- {h['text']}" for h in hits) or "（知识库暂无相关片段）"
+        return self.generate_topics(industry, style, count, context=context)
+
+    def build_video_prompt(self, topic: dict, ref_image: str | None = None,
+                          duration: int = 5, resolution: str = "1280x720") -> dict:
+        """
+        把选题组装成视频生成工具所需的入参。
+        返回 {prompt, duration, resolution, style, ref_image}
+        - prompt：融合标题/钩子/脚本大纲，喂给文生视频模型
+        - style：从选题风格或脚本推断
+        """
+        title = topic.get("title", "")
+        hook = topic.get("hook", "")
+        outline = topic.get("script_outline", "")
+        prompt = (
+            f"请根据以下短视频脚本生成视频。标题：{title}。开头钩子：{hook}。"
+            f"分镜脚本：{outline}。画面风格：{topic.get('style', '电影感写实')}，"
+            f"节奏明快，适合短视频平台传播。"
+        )
+        return {
+            "prompt": prompt,
+            "duration": duration,
+            "resolution": resolution,
+            "style": topic.get("style", "cinematic"),
+            "ref_image": ref_image,
+        }
