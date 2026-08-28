@@ -28,27 +28,30 @@ class TopicGenerateReq(BaseModel):
     count: int = 5
     use_knowledge: bool = False
     write_to_bitable: bool = False
+    enhance: bool = True
 
 
 class TopicApproveReq(BaseModel):
     batch_id: str
-    topic_ids: list[str]
+    topic_ids: list[str] | None = None
+    top_n: int = 0
 
 
 @router.post("/topic/generate")
 def topic_generate(req: TopicGenerateReq):
-    """批量生成选题；可选基于知识库、可选写多维表格待审核。"""
+    """批量生成选题（默认带质量增强：去重/打分/排序）；可选基于知识库、可选写多维表格待审核。"""
     out = topic_generate_batch(
         industry=req.industry, style=req.style, count=req.count,
         use_knowledge=req.use_knowledge, write_to_bitable=req.write_to_bitable,
+        enhance=req.enhance,
     )
     return {"code": 0, **out}
 
 
 @router.post("/topic/approve")
 def topic_approve_api(req: TopicApproveReq):
-    """人工审核：标记优质选题进入下一环节（生成视频）。"""
-    out = topic_approve(batch_id=req.batch_id, topic_ids=req.topic_ids)
+    """人工审核：标记优质选题进入下一环节（生成视频）。可传 topic_ids 或 top_n 自动优选。"""
+    out = topic_approve(batch_id=req.batch_id, topic_ids=req.topic_ids, top_n=req.top_n)
     if "error" in out:
         raise BusinessError(out["error"], code=404)
     return {"code": 0, **out}

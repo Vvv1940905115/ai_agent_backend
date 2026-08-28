@@ -15,7 +15,9 @@ import json
 import uuid
 
 from app.agent.llm import get_active_llm
+from app.core.config import settings
 from app.core.logging import get_logger
+from app.topic.quality import enrich_topics
 
 logger = get_logger("topic.selector")
 
@@ -41,14 +43,9 @@ class TopicSelector:
     def __init__(self):
         self.llm = get_active_llm()  # 缺 key 时抛 RuntimeError（与现有 LLM 层一致）
 
-    def generate_topics(self, industry: str, style: str = "", count: int = 5,
-                        context: str = "", hotspots: str = "") -> list[dict]:
-        """
-        生成选题列表。
-
-        :param context: 参考素材（知识库检索片段 / 已解析短视频分析结论），提升相关性
-        :param hotspots: 热点线索（可选），如热搜词
-        """
+    def _generate_raw(self, industry: str, style: str, count: int,
+                      context: str, hotspots: str) -> list[dict]:
+        """原始 LLM 调用：产出选题 JSON 并补充稳定 id（不做质量增强）。"""
         ctx_block = ""
         if context:
             ctx_block += f"\n【参考素材/企业知识】\n{context}\n"
@@ -70,19 +67,59 @@ class TopicSelector:
         )
         content = resp.choices[0].message.content or "[]"
         topics = _extract_json_array(content)
-        # 为每个选题补充稳定 id，便于审核/追踪
         for t in topics:
             t.setdefault("id", str(uuid.uuid4())[:8])
         logger.info("生成选题 %d 条 (行业=%s, 风格=%s)", len(topics), industry, style)
         return topics
 
+    def generate_report(self, industry: str, style: str = "", count: int = 5,
+                        use_knowledge: bool = False, context: str = "",
+                        hotspots: str = "") -> dict:
+        """增强入口：返回 {topics(已去重/打分/排序), duplicates, summary}。
+
+        当 use_knowledge=True 时自动检索企业知识库作为上下文与热度来源，
+        使选题质量分纳入知识相关性维度，并按知识热点优选排序。
+        """
+        knowledge_hits = None
+        if use_knowledge:
+            from app.knowledge.ingest import search_knowledge
+            hits = search_knowledge(context or industry, top_k=5)
+            knowledge_hits = [h.get("text", "") for h in hits]
+            ctx = "\n".join(f"- {h}" for h in knowledge_hits) or "（知识库暂无相关片段）"
+            context = ctx
+        raw = self._generate_raw(industry, style, count, context, hotspots)
+        return enrich_topics(
+            raw,
+            knowledge_context=context or None,
+            knowledge_hits=knowledge_hits,
+            dedupe_threshold=settings.TOPIC_DEDUPE_THRESHOLD,
+        )
+
+    def generate_topics(self, industry: str, style: str = "", count: int = 5,
+                        context: str = "", hotspots: str = "",
+                        enhance: bool = True) -> list[dict]:
+        """生成选题列表（默认带质量增强：去重/打分/排名）。
+
+        :param context: 参考素材（知识库检索片段 / 已解析短视频分析结论），提升相关性
+        :param hotspots: 热点线索（可选），如热搜词
+        :param enhance: False 时返回未增强的原始选题（向后兼容）
+        """
+        if enhance:
+            return self.generate_report(industry, style, count,
+                                        use_knowledge=False, context=context,
+                                        hotspots=hotspots)["topics"]
+        return self._generate_raw(industry, style, count, context, hotspots)
+
     def generate_from_knowledge(self, industry: str, style: str = "", count: int = 5,
-                               query: str | None = None) -> list[dict]:
+                               query: str | None = None, enhance: bool = True) -> list[dict]:
         """从企业知识库检索相关片段作为上下文，再生成选题（RAG 驱动）。"""
+        if enhance:
+            return self.generate_report(industry, style, count,
+                                        use_knowledge=True, context=query or "")["topics"]
         from app.knowledge.ingest import search_knowledge
         hits = search_knowledge(query or industry, top_k=5)
         context = "\n".join(f"- {h['text']}" for h in hits) or "（知识库暂无相关片段）"
-        return self.generate_topics(industry, style, count, context=context)
+        return self._generate_raw(industry, style, count, context, "")
 
     def build_video_prompt(self, topic: dict, ref_image: str | None = None,
                           duration: int = 5, resolution: str = "1280x720") -> dict:

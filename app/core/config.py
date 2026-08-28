@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     # ---------- AI 选题 ----------
     TOPIC_DEFAULT_COUNT: int = 5
     TOPIC_DEFAULT_STYLE: str = "科普"
+    TOPIC_DEDUPE_THRESHOLD: float = 0.7   # 选题去重相似度阈值（0-1，越高越严格）
 
     # ---------- 文生视频 / 图生视频（异步任务）----------
     # provider: mock(离线联调) | generic(自定义第三方 HTTP API)

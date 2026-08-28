@@ -36,6 +36,9 @@ logs/*
 .vscode/
 *.swp
 
+# WorkBuddy 本地工作数据（项目 memory / 运行产物，非源码）
+.workbuddy/
+
 # OS
 .DS_Store
 Thumbs.db

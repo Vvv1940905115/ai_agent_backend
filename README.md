@@ -283,3 +283,39 @@ curl -X POST http://localhost:8000/api/pipeline/topic-to-video \
 curl http://localhost:8000/api/video/status/{video_task_id}
 ```
 
+### 6.7 选题质量增强（去重 / 打分 / 知识库热度优选）
+
+每次生成选题后，框架自动做三步质量增强（见 `app/topic/quality.py`，纯标准库实现，离线可跑）：
+
+1. **去重**：基于文本相似度（CJK 字符 bigram Jaccard + 序列比）合并同批近似选题，保留信息量更大者。
+   阈值由 `TOPIC_DEDUPE_THRESHOLD`（默认 `0.7`）控制。
+2. **多维度打分**：钩子强度 / 脚本分镜完整度 / 标签丰富度 / 目标人群明确度 / 新颖度 / 知识相关性，
+   加权得到 0-100 总分，并给出等级（优质 ≥80 / 良好 60-79 / 待优化 <60）与薄弱维度改进建议。
+3. **知识库热度优选**：基于知识库命中片段的高频词，对更贴合企业知识热点的选题做最多 +10 分加成，排名更靠前。
+
+增强后每条选题会带上 `quality`（分数/等级/维度/建议）、`rank`（排名）、`is_duplicate` 字段；
+接口额外返回 `duplicates`（被合并选题）与 `quality_summary`（总数 / 保留数 / 平均分 / 最优选题 / 等级分布）。
+
+接口变化：
+
+| 方法 | 路径 | 变化 |
+|---|---|---|
+| POST | `/api/topic/generate` | 新增 `enhance`（默认 true）；返回 `quality_summary` / `duplicates`；写多维表格时附 `质量分`/`排名`/`层级` |
+| POST | `/api/topic/approve` | 新增 `top_n`：自动优选排名前 N 选题（与 `topic_ids` 合并去重） |
+
+示例：
+
+```bash
+# 生成并自动去重/打分/排序（基于知识库）
+curl -X POST http://localhost:8000/api/topic/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"industry":"美妆","style":"科普","count":5,"use_knowledge":true}'
+
+# 审核时直接优选排名前 3 的选题
+curl -X POST http://localhost:8000/api/topic/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"batch_id":"batch_xxxx","top_n":3}'
+```
+
+> 若需关闭质量增强（返回未打分原始选题），传 `"enhance": false` 即可。
+
