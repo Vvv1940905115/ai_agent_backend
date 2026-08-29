@@ -57,3 +57,13 @@ app.include_router(topic.router)
 @app.get("/health")
 def health():
     return {"code": 0, "status": "ok", "service": settings.APP_NAME}
+
+
+# ---------- 静态前端（Web 控制台，零依赖）----------
+# 挂载在根路径：访问 / 即返回 frontend/index.html；/docs、/api、/health 等具体路由优先匹配。
+from fastapi.staticfiles import StaticFiles
+import os as _os
+
+_FRONTEND_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "frontend")
+if _os.path.isdir(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

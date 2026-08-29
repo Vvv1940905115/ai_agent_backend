@@ -1,0 +1,151 @@
+:root {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --border: #e3e8ef;
+  --text: #1f2933;
+  --muted: #6b7785;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --green: #16a34a;
+  --blue: #2563eb;
+  --orange: #ea580c;
+  --red: #dc2626;
+  --shadow: 0 1px 3px rgba(16, 24, 40, .08), 0 1px 2px rgba(16, 24, 40, .06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.brand .logo { color: var(--primary); }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.base-url { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.base-url input {
+  width: 180px; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 12px;
+}
+.health-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.health-dot.online { background: var(--green); }
+.health-dot.offline { background: var(--red); }
+.health-text { font-size: 12px; color: var(--muted); }
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex; gap: 4px; padding: 10px 20px 0;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.tab {
+  border: none; background: transparent; padding: 10px 16px; cursor: pointer;
+  font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+/* ---------- 面板 ---------- */
+main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+h2 { margin: 0 0 4px; font-size: 18px; }
+.hint { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+
+/* ---------- 表单 ---------- */
+.form-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-bottom: 14px;
+}
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+label.block { display: block; margin-bottom: 14px; }
+label.wide { grid-column: 1 / -1; }
+label.checkbox { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+input[type="text"], input[type="number"], select, textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 14px; color: var(--text); background: #fff; font-family: inherit;
+}
+textarea { resize: vertical; width: 100%; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+
+/* ---------- 按钮 ---------- */
+.actions { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.btn {
+  padding: 9px 18px; border: 1px solid var(--border); background: #fff;
+  border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--text);
+  transition: all .15s;
+}
+.btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn.primary:hover:not(:disabled) { background: var(--primary-dark); color: #fff; }
+
+.divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+/* ---------- 选题卡片 ---------- */
+.summary {
+  background: #eef4ff; border: 1px solid #c7d7fe; border-radius: 8px;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.7;
+}
+.summary b { color: var(--primary-dark); }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; box-shadow: var(--shadow); position: relative;
+}
+.card .rank {
+  position: absolute; top: -8px; left: -8px; width: 26px; height: 26px;
+  background: var(--primary); color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+}
+.card.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,.2); }
+.card h3 { margin: 6px 0 6px; font-size: 15px; padding-left: 18px; }
+.card .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.card .meta .topic { color: var(--text); }
+.card .field { font-size: 13px; margin: 6px 0; }
+.card .field .k { color: var(--muted); display: inline-block; width: 56px; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.tag { background: #eef2f7; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff;
+}
+.badge.优质 { background: var(--green); }
+.badge.良好 { background: var(--blue); }
+.badge.待优化 { background: var(--orange); }
+.score { font-size: 20px; font-weight: 700; }
+.suggestions { margin-top: 8px; font-size: 12px; color: var(--orange); background: #fff7ed; padding: 6px 8px; border-radius: 6px; }
+.card input[type="checkbox"] { position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; }
+
+/* ---------- 结果框 ---------- */
+.result-box {
+  background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px;
+  font-size: 13px; line-height: 1.6; overflow: auto; max-height: 420px;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1f2933; color: #fff; padding: 10px 18px; border-radius: 8px;
+  font-size: 14px; box-shadow: var(--shadow); z-index: 100; max-width: 80vw;
+}
+.toast.error { background: var(--red); }
+.toast.success { background: var(--green); }

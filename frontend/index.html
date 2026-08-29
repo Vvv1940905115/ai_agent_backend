@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Agent 控制台</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span>AI Agent 控制台</span>
+    </div>
+    <div class="topbar-right">
+      <label class="base-url">
+        后端地址
+        <input id="baseUrl" type="text" value="" placeholder="http://localhost:8000" />
+      </label>
+      <span id="healthDot" class="health-dot offline" title="服务状态"></span>
+      <span id="healthText" class="health-text">检测中…</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="topic">选题中心</button>
+    <button class="tab" data-tab="video">视频生成</button>
+    <button class="tab" data-tab="knowledge">知识库</button>
+    <button class="tab" data-tab="agent">Agent</button>
+    <button class="tab" data-tab="analyze">短视频解析</button>
+  </nav>
+
+  <main>
+    <!-- 选题中心 -->
+    <section id="tab-topic" class="panel active">
+      <h2>AI 选题中心</h2>
+      <p class="hint">批量生成短视频选题，自动去重、质量打分与排序。生成后可勾选优质选题一键审核优选。</p>
+      <div class="form-grid">
+        <label>行业 <input id="t-industry" type="text" placeholder="如 美妆 / 教育 / 3C" value="美妆" /></label>
+        <label>风格 <input id="t-style" type="text" placeholder="如 搞笑 / 科普 / 剧情" value="科普" /></label>
+        <label>数量 <input id="t-count" type="number" value="5" min="1" max="20" /></label>
+        <label class="checkbox"><input id="t-useKb" type="checkbox" /> 基于知识库</label>
+        <label class="checkbox"><input id="t-bitable" type="checkbox" /> 写入多维表格</label>
+        <label class="wide">热点线索（可选）<input id="t-hotspots" type="text" placeholder="热搜词，逗号分隔" /></label>
+      </div>
+      <div class="actions">
+        <button id="btnGen" class="btn primary">生成选题</button>
+        <button id="btnApprove" class="btn" disabled>审核优选 Top N</button>
+      </div>
+      <div id="t-summary" class="summary hidden"></div>
+      <div id="t-list" class="card-grid"></div>
+    </section>
+
+    <!-- 视频生成 -->
+    <section id="tab-video" class="panel">
+      <h2>视频生成</h2>
+      <p class="hint">提交文生视频任务（异步），拿到任务 ID 后轮询进度。</p>
+      <label class="block">视频提示词 (prompt)
+        <textarea id="v-prompt" rows="4" placeholder="根据脚本生成的视频提示词"></textarea>
+      </label>
+      <div class="form-grid">
+        <label>时长(秒) <input id="v-duration" type="number" value="5" min="1" max="60" /></label>
+        <label>分辨率 <input id="v-resolution" type="text" value="1280x720" /></label>
+        <label>风格 <input id="v-style" type="text" value="cinematic" /></label>
+      </div>
+      <div class="actions">
+        <button id="btnVSubmit" class="btn primary">提交任务</button>
+      </div>
+      <div class="divider"></div>
+      <label class="block">任务 ID（查询进度）
+        <input id="v-taskId" type="text" placeholder="提交后自动填入，也可手动粘贴" />
+      </label>
+      <div class="actions">
+        <button id="btnVQuery" class="btn">查询进度</button>
+        <button id="btnVAuto" class="btn">自动轮询</button>
+      </div>
+      <pre id="v-result" class="result-box"></pre>
+    </section>
+
+    <!-- 知识库 -->
+    <section id="tab-knowledge" class="panel">
+      <h2>企业知识库</h2>
+      <p class="hint">导入文档片段供选题/检索使用；检索时返回最相关片段。</p>
+      <label class="block">检索 query
+        <input id="k-query" type="text" placeholder="输入要检索的内容" />
+      </label>
+      <div class="actions">
+        <button id="btnKSearch" class="btn primary">检索</button>
+      </div>
+      <div class="divider"></div>
+      <label class="block">导入文本
+        <textarea id="k-text" rows="5" placeholder="粘贴要入库的文档/知识片段"></textarea>
+      </label>
+      <div class="actions">
+        <button id="btnKIngest" class="btn">导入</button>
+      </div>
+      <pre id="k-result" class="result-box"></pre>
+    </section>
+
+    <!-- Agent -->
+    <section id="tab-agent" class="panel">
+      <h2>业务 Agent 编排</h2>
+      <p class="hint">运行指定类型的智能体，返回最终文本与工具调用轨迹。</p>
+      <div class="form-grid">
+        <label>Agent 类型
+          <select id="a-type">
+            <option value="short_video">short_video（短视频分析）</option>
+            <option value="geo">geo（地域选题）</option>
+            <option value="topic" selected>topic（AI 选题）</option>
+            <option value="video_pipeline">video_pipeline（选题→视频全链路）</option>
+          </select>
+        </label>
+        <label>最大迭代 <input id="a-max" type="number" value="6" min="1" max="20" /></label>
+      </div>
+      <label class="block">任务描述
+        <textarea id="a-input" rows="4" placeholder="例如：帮我针对美妆行业生成 3 个科普类短视频选题并写脚本大纲"></textarea>
+      </label>
+      <div class="actions">
+        <button id="btnARun" class="btn primary">运行 Agent</button>
+      </div>
+      <pre id="a-result" class="result-box"></pre>
+    </section>
+
+    <!-- 短视频解析 -->
+    <section id="tab-analyze" class="panel">
+      <h2>短视频解析</h2>
+      <p class="hint">输入链接或文案，分析其结构、钩子与可复用要素。</p>
+      <label class="block">视频链接（可选）
+        <input id="s-url" type="text" placeholder="https://..." />
+      </label>
+      <label class="block">文案文本
+        <textarea id="s-text" rows="4" placeholder="粘贴短视频标题/文案"></textarea>
+      </label>
+      <div class="actions">
+        <button id="btnSAnalyze" class="btn primary">分析</button>
+      </div>
+      <pre id="s-result" class="result-box"></pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

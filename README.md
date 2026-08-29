@@ -87,6 +87,7 @@ ai_agent_backend/
 │       ├── short_video.py
 │       ├── geo.py
 │       └── knowledge.py
+├── frontend/                  # 零依赖 Web 控制台（index.html/styles.css/app.js）
 ├── scripts/
 │   └── ingest.py                # 知识库入库 CLI
 ├── tests/
@@ -318,4 +319,39 @@ curl -X POST http://localhost:8000/api/topic/approve \
 ```
 
 > 若需关闭质量增强（返回未打分原始选题），传 `"enhance": false` 即可。
+
+### 6.8 Web 控制台（零依赖界面）
+
+项目内置一个**零构建、零额外依赖**的 Web 控制台，服务启动后直接打开浏览器即可操作，无需命令行。
+
+- 代码位置：`frontend/`（仅 `index.html` / `styles.css` / `app.js` 三个文件，原生 JS，无框架、无打包）。
+- 挂载方式：`app/main.py` 末尾用 `StaticFiles` 把 `frontend/` 挂到根路径 `/`（`html=True`）。
+  - 访问 `http://localhost:8000/` → 打开控制台首页
+  - 原有的 `http://localhost:8000/docs`（Swagger）、`/redoc`、`/api/*`、`/health` 仍正常工作（具体路由优先于静态挂载）
+- 顶部可手动填写「后端地址」（默认同源 `location.origin`），并实时显示服务健康状态。
+
+控制台覆盖全部能力：
+
+| 模块 | 功能 |
+|---|---|
+| 选题中心 | 按行业/风格/数量生成选题，展示质量分、等级、排名；勾选或按 `top_n` 一键审核优选 |
+| 视频生成 | 提交文生视频任务，按 `task_id` 查询进度或自动轮询 |
+| 知识库 | 检索 / 导入文档片段 |
+| Agent | 运行 short_video / geo / topic / video_pipeline 四类智能体 |
+| 短视频解析 | 输入链接或文案，分析结构、钩子与可复用要素 |
+
+启动后即可使用：
+
+```bash
+# Docker 方式
+docker compose up -d --build
+# 浏览器打开：
+#   http://localhost:8000/        （Web 控制台）
+#   http://localhost:8000/docs     （接口调试页，仍可用）
+
+# 或本地方式
+pip install -r requirements.txt && cp .env.example .env
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
 
