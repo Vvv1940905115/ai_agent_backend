@@ -11,6 +11,7 @@ VideoPipelineAgent：LLM 驱动的端到端编排 Agent，工具包含
 解析 -> 生成选题 -> 选优 -> 组装视频 Prompt -> 提交生成 -> 写库/通知。
 """
 from app.agent.base import BaseAgent
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.topic.selection import TopicSelector
 from app.video_gen.generator import video_task_manager

@@ -10,7 +10,6 @@
 统一接口：embed(texts: list[str]) -> list[list[float]]
 """
 import hashlib
-import math
 
 import numpy as np
 

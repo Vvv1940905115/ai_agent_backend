@@ -43,7 +43,7 @@ def _extract_json_array(text: str) -> list:
 class TopicSelector:
     def __init__(self, llm_override: LLMOverride | None = None):
         # 优先级：显式覆盖 > 请求级 contextvar > 全局 .env
-        self.llm = resolve_llm(llm_override)  # 缺 key 时抛 RuntimeError（与现有 LLM 层一致）
+        self.llm = resolve_llm(llm_override)  # 缺 key 时抛 BusinessError(400)
 
     def _generate_raw(self, industry: str, style: str, count: int,
                       context: str, hotspots: str) -> list[dict]:

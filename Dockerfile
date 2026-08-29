@@ -1,16 +1,23 @@
 # ============ AI Agent 业务后端 Dockerfile ============
 FROM python:3.11-slim
 
-# 换国内源加速（生产无关可删）；设置时区
+# pip 镜像源（默认阿里云；清华源在本机实测会出现 SSL 握手失败，故改用阿里源）
+# 如需换源，构建时覆盖：
+#   docker build --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple -t ai-agent-backend:1.0.0 .
+# 海外服务器可设为 https://pypi.org/simple
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    PIP_INDEX_URL=${PIP_INDEX_URL}
 
 WORKDIR /app
 
 # 先装依赖层（利用构建缓存）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 先按 PIP_INDEX_URL 安装；若因镜像源证书/网络问题失败，自动回退 PyPI 官方源重试
+RUN pip install --no-cache-dir -r requirements.txt \
+    || pip install --no-cache-dir -i https://pypi.org/simple -r requirements.txt
 
 # 拷贝源码
 COPY . .

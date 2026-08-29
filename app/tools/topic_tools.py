@@ -3,8 +3,6 @@
 - topic_generate_batch：批量生成选题+脚本大纲（可写入多维表格待审核）
 - topic_approve：人工审核，标记优质选题进入下一环节（生成视频）
 """
-import uuid
-
 from app.agent.tool import tool
 from app.core.config import settings
 from app.core.logging import get_logger

@@ -8,12 +8,9 @@
 - GET  /api/video/status/{id}         查询任务状态/结果
 - POST /api/pipeline/topic-to-video   方案B全链路：解析参考短视频 -> 生成选题 -> 提交视频生成
 """
-import uuid
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.core.config import settings
 from app.core.exceptions import BusinessError
 from app.topic.store import topic_batch_store
 from app.tools.topic_tools import topic_approve, topic_generate_batch
@@ -226,10 +223,19 @@ def pipeline_topic_to_video(req: PipelineReq):
     from app.agents.video_pipeline_agent import run_topic_to_video_pipeline
     token = llm_override_ctx.set(req.llm) if req.llm is not None else None
     try:
-        return {"code": 0, **run_topic_to_video_pipeline(
+        out = run_topic_to_video_pipeline(
             video_url=req.video_url, industry=req.industry, style=req.style, count=req.count,
             write_to_bitable=req.write_to_bitable, notify=req.notify, ref_image=req.ref_image,
-        )}
+        )
+        if "error" in out:
+            # 抓取/分析失败等外部依赖问题 -> 502，与 /api/short-video/analyze-url 保持一致
+            raise BusinessError(f"全链路执行失败: {out['error']}", code=502)
+        return {"code": 0, **out}
+    except BusinessError:
+        # 业务异常（如缺 API Key -> 400）原样透出，不做二次包装
+        raise
+    except Exception as e:
+        raise BusinessError(f"全链路执行失败: {e}", code=502)
     finally:
         if token is not None:
             llm_override_ctx.reset(token)

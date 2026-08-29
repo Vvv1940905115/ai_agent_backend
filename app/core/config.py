@@ -31,7 +31,8 @@ class Settings(BaseSettings):
     DOUBAO_MODEL: str = "ep-xxxxxxxx"
 
     DEEPSEEK_API_KEY: Optional[str] = None
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v3"
+    # DeepSeek 官方 base_url（/v1、/v3 为兼容别名，同样可用）
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
     QWEN_API_KEY: Optional[str] = None

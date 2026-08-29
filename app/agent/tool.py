@@ -11,8 +11,7 @@
     def my_tool(arg1: str) -> dict: ...
 并在 Agent 初始化时把 "my_tool" 加入 tool_names 即可。
 """
-import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 

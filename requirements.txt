@@ -22,5 +22,8 @@ tenacity==8.5.0
 # 配置 / 日志
 python-dotenv==1.0.1
 
+# 表单解析（Starlette 表单/文件上传依赖；显式声明以消除版本兼容警告）
+python-multipart>=0.0.9
+
 # 测试
 pytest==8.2.2

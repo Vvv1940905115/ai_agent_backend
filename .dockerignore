@@ -1,0 +1,40 @@
+# ============ 构建上下文排除清单 ============
+# 目的：加速构建 + 避免把密钥 / 本地运行数据打进镜像
+
+# 密钥（.env 只通过 docker compose 的 env_file 或 docker run --env-file 注入）
+.env
+.env.*
+!.env.example
+
+# 版本控制
+.git
+.gitignore
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# 测试与缓存
+.pytest_cache/
+pytest-cache-files-*/
+.coverage
+htmlcov/
+
+# 本地运行数据（容器启动时用卷挂载，不进镜像）
+data/
+logs/
+*.pkl
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 文档（镜像里不需要，减小体积；如需保留 README 请删除本行）
+*.md

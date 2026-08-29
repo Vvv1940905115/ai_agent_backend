@@ -16,6 +16,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.exceptions import BusinessError
 from app.core.logging import get_logger
 
 logger = get_logger("llm")
@@ -46,7 +47,7 @@ class LLMOverride(BaseModel):
 
 # 各内置服务商的默认 base_url / model，供覆盖缺省时回退
 _PROVIDER_DEFAULTS = {
-    "deepseek": ("https://api.deepseek.com/v3", "deepseek-chat"),
+    "deepseek": ("https://api.deepseek.com", "deepseek-chat"),
     "doubao": ("https://ark.cn-beijing.volces.com/api/v3", "ep-xxxxxxxx"),
     "qwen": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
 }
@@ -109,8 +110,12 @@ class LLMClient:
 
     def __init__(self, base_url: str, api_key: str, model: str):
         if not api_key:
-            raise RuntimeError(
-                f"缺少 API Key，请配置对应供应商密钥（当前供应商: {settings.LLM_PROVIDER}）"
+            # 用 BusinessError（HTTP 400）而非 RuntimeError（HTTP 500）：
+            # 缺密钥是「配置问题」而非「服务器故障」，应给用户明确可执行的提示。
+            raise BusinessError(
+                f"缺少 API Key，请配置对应供应商密钥（当前供应商: {settings.LLM_PROVIDER}）",
+                code=400,
+                detail="在 .env 中填写对应 XXX_API_KEY，或在 Web 控制台右上角「API 配置」里填写你自己的 Key。",
             )
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model = model
