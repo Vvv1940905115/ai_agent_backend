@@ -95,6 +95,13 @@ def video_models():
     return {"code": 0, "models": VIDEO_MODELS}
 
 
+class VideoApiConfig(BaseModel):
+    """每个任务可覆盖的视频生成 API 配置；不填则走服务端 .env 默认配置。"""
+    provider: str = "mock"   # mock | generic
+    api_url: str | None = None
+    api_key: str | None = None
+
+
 class VideoSubmitReq(BaseModel):
     prompt: str
     duration: int = 5
@@ -103,6 +110,7 @@ class VideoSubmitReq(BaseModel):
     model: str | None = None
     ref_image: str | None = None
     source_topic: str | None = None
+    api_config: VideoApiConfig | None = None   # 可选：前端自定义 API 入口
 
 
 @router.post("/video/submit")
@@ -118,12 +126,39 @@ def video_submit(req: VideoSubmitReq):
         if req.resolution not in spec["resolutions"]:
             raise BusinessError(
                 f"模型 {spec['name']} 不支持分辨率 {req.resolution}（可选：{', '.join(spec['resolutions'])}）", code=400)
+    if req.api_config and req.api_config.provider != "mock":
+        if not req.api_config.api_url or not req.api_config.api_key:
+            raise BusinessError("generic 模式必须填写 API URL 与 API Key", code=400)
     task_id = video_task_manager.submit(
         prompt=req.prompt, duration=req.duration, resolution=req.resolution,
         style=req.style, ref_image=req.ref_image, source_topic=req.source_topic,
         model=req.model,
+        api_config=req.api_config.model_dump() if req.api_config else None,
     )
     return {"code": 0, "task_id": task_id, "status": "submitted", "model": req.model}
+
+
+@router.post("/video/test-config")
+def video_test_config(cfg: VideoApiConfig):
+    """测试视频生成 API 配置是否可连通（仅校验 URL/KEY 是否填写，不实际扣费提交）。"""
+    if cfg.provider == "mock":
+        return {"code": 0, "ok": True, "message": "mock 模式无需外部 API"}
+    if not cfg.api_url or not cfg.api_key:
+        raise BusinessError("generic 模式必须填写 API URL 与 API Key", code=400)
+    from app.video_gen.client import VideoGenClient
+    client = VideoGenClient()
+    try:
+        client._generic_submit(
+            prompt="ping", duration=1, resolution="1280x720",
+            style="cinematic", ref_image=None, model="ping",
+            api_config=cfg.model_dump(),
+        )
+        return {"code": 0, "ok": True, "message": "连接成功"}
+    except Exception as e:
+        msg = str(e)
+        if "提交失败 HTTP" in msg:
+            return {"code": 0, "ok": True, "message": f"接口可达（鉴权响应：{msg[:120]}）"}
+        return {"code": 0, "ok": False, "message": msg[:200]}
 
 
 @router.get("/video/status/{task_id}")

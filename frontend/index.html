@@ -246,6 +246,38 @@
           </div>
         </header>
 
+        <!-- API 配置入口 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">API 配置</span>
+            <span id="av-api-status" class="hint inline"></span>
+          </div>
+          <p class="hint">默认走服务端 .env 配置；如需前端自定义视频生成 API，请填写并保存（仅存在本机浏览器 localStorage）。</p>
+          <div class="form-grid cols-3">
+            <label class="field">
+              <span class="field-label">服务商</span>
+              <select id="av-api-provider">
+                <option value="mock" selected>mock（离线联调）</option>
+                <option value="generic">generic（自定义 HTTP API）</option>
+              </select>
+            </label>
+            <label class="field wide">
+              <span class="field-label">API URL</span>
+              <input id="av-api-url" type="text" placeholder="https://your-provider.com" />
+            </label>
+            <label class="field wide">
+              <span class="field-label">API Key</span>
+              <input id="av-api-key" type="password" placeholder="sk-..." autocomplete="off" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="av-api-save" class="btn">保存配置</button>
+            <button id="av-api-clear" class="btn">清除配置</button>
+            <button id="av-api-test" class="btn">测试连接</button>
+            <span id="av-api-msg" class="cfg-msg"></span>
+          </div>
+        </div>
+
         <!-- 任务参数 -->
         <div class="card">
           <div class="card-header"><span class="card-title">任务参数</span></div>

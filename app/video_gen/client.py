@@ -45,21 +45,34 @@ class VideoGenClient:
         self.api_url = settings.VIDEO_GEN_API_URL
         self.api_key = settings.VIDEO_GEN_API_KEY
 
+    def _cfg(self, api_config: dict | None):
+        """合并单次调用传入的配置（优先）与服务端 .env 默认值。"""
+        if not api_config:
+            return self.provider, self.api_url, self.api_key
+        return (
+            api_config.get("provider") or self.provider,
+            api_config.get("api_url") or self.api_url,
+            api_config.get("api_key") or self.api_key,
+        )
+
     # ---------- 提交任务 ----------
     def submit(self, prompt: str, duration: int = 5, resolution: str = "1280x720",
                style: str = "", ref_image: str | None = None,
-               model: str | None = None) -> str:
+               model: str | None = None,
+               api_config: dict | None = None) -> str:
         """返回第三方 task_id（provider 内部任务标识）。"""
-        if self.provider == "mock":
+        provider, _, _ = self._cfg(api_config)
+        if provider == "mock":
             return self._mock_submit(prompt)
-        return self._generic_submit(prompt, duration, resolution, style, ref_image, model)
+        return self._generic_submit(prompt, duration, resolution, style, ref_image, model, api_config)
 
     # ---------- 查询任务 ----------
-    def query(self, provider_task_id: str) -> dict:
+    def query(self, provider_task_id: str, api_config: dict | None = None) -> dict:
         """返回 {status, progress, video_url, error}。status ∈ processing|succeeded|failed"""
-        if self.provider == "mock":
+        provider, _, _ = self._cfg(api_config)
+        if provider == "mock":
             return self._mock_query(provider_task_id)
-        return self._generic_query(provider_task_id)
+        return self._generic_query(provider_task_id, api_config)
 
     # ===================== mock 实现（离线联调）=====================
     def _mock_submit(self, prompt: str) -> str:
@@ -83,8 +96,10 @@ class VideoGenClient:
     @retry(retry=retry_if_exception_type(RateLimitError),
            stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10),
            reraise=True)
-    def _generic_submit(self, prompt, duration, resolution, style, ref_image, model) -> str:
-        if not self.api_url or not self.api_key:
+    def _generic_submit(self, prompt, duration, resolution, style, ref_image, model,
+                        api_config: dict | None = None) -> str:
+        provider, api_url, api_key = self._cfg(api_config)
+        if provider != "mock" and (not api_url or not api_key):
             raise VideoGenError("缺少 VIDEO_GEN_API_URL / VIDEO_GEN_API_KEY")
         body = {
             "prompt": prompt,
@@ -98,8 +113,8 @@ class VideoGenClient:
             body["image"] = ref_image  # 图生视频：参考图
         try:
             r = httpx.post(
-                f"{self.api_url.rstrip('/')}/v1/video/generations",
-                headers={"Authorization": f"Bearer {self.api_key}",
+                f"{api_url.rstrip('/')}/v1/video/generations",
+                headers={"Authorization": f"Bearer {api_key}",
                           "Content-Type": "application/json"},
                 json=body,
                 timeout=settings.REQUEST_TIMEOUT,
@@ -117,11 +132,14 @@ class VideoGenClient:
             raise VideoGenError(f"提交响应缺少 task id: {data}")
         return pid
 
-    def _generic_query(self, provider_task_id: str) -> dict:
+    def _generic_query(self, provider_task_id: str, api_config: dict | None = None) -> dict:
+        provider, api_url, api_key = self._cfg(api_config)
+        if provider != "mock" and (not api_url or not api_key):
+            raise VideoGenError("缺少 VIDEO_GEN_API_URL / VIDEO_GEN_API_KEY")
         try:
             r = httpx.get(
-                f"{self.api_url.rstrip('/')}/v1/video/generations/{provider_task_id}",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                f"{api_url.rstrip('/')}/v1/video/generations/{provider_task_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
                 timeout=settings.REQUEST_TIMEOUT,
             )
         except Exception as e:

@@ -78,6 +78,56 @@ function withLLM(body) {
   return Object.assign({}, body, { llm: cfg });
 }
 
+// ---------- AI 视频：自定义 API 入口配置（存 localStorage）----------
+const VIDEO_API_STORE_KEY = "ai_video_api_config";
+
+function getVideoAPIConfig() {
+  try {
+    const raw = localStorage.getItem(VIDEO_API_STORE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c.provider || c.provider === "mock") return null;  // mock 走服务端默认，不必发送
+    const out = { provider: c.provider };
+    if (c.api_url) out.api_url = c.api_url.trim();
+    if (c.api_key) out.api_key = c.api_key.trim();
+    if (out.provider === "generic" && (!out.api_url || !out.api_key)) return null;
+    return out;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setVideoAPIConfig(c) {
+  localStorage.setItem(VIDEO_API_STORE_KEY, JSON.stringify({
+    provider: c.provider || "mock",
+    api_url: (c.api_url || "").trim(),
+    api_key: (c.api_key || "").trim(),
+  }));
+}
+
+function clearVideoAPIConfig() {
+  localStorage.removeItem(VIDEO_API_STORE_KEY);
+}
+
+function withVideoAPI(body) {
+  const cfg = getVideoAPIConfig();
+  if (!cfg) return body;
+  return Object.assign({}, body, { api_config: cfg });
+}
+
+function renderVideoAPIStatus() {
+  const c = getVideoAPIConfig();
+  const el = $("av-api-status");
+  if (!el) return;
+  if (c) {
+    el.textContent = "已自定义：" + c.provider + (c.api_url ? " / " + c.api_url.replace(/^https?:\/\//, "").split("/")[0] : "");
+    el.classList.add("configured");
+  } else {
+    el.textContent = "当前走服务端默认配置";
+    el.classList.remove("configured");
+  }
+}
+
 function renderLLMStatus() {
   const c = getLLMConfig();
   const el = $("llmStatus");
@@ -338,11 +388,16 @@ function bind() {
   $("av-apply").addEventListener("click", avApplyJson);
   $("av-get").addEventListener("click", avExportJson);
   $("av-poll-all").addEventListener("click", aiPollAll);
+  $("av-api-save").addEventListener("click", aiSaveVideoAPIConfig);
+  $("av-api-clear").addEventListener("click", aiClearVideoAPIConfig);
+  $("av-api-test").addEventListener("click", aiTestVideoAPIConfig);
 }
 
 bind();
 initAIVideo();
+initVideoAPIConfig();
 renderLLMStatus();
+renderVideoAPIStatus();
 checkHealth();
 setInterval(checkHealth, 15000);
 
@@ -355,6 +410,63 @@ let avBatchTimer = null;
 
 function avFindModel(id) {
   return avModels.find((m) => m.id === id) || null;
+}
+
+// 初始化 API 配置表单：从 localStorage 回填
+function initVideoAPIConfig() {
+  try {
+    const raw = localStorage.getItem(VIDEO_API_STORE_KEY);
+    if (!raw) return;
+    const c = JSON.parse(raw);
+    if (c.provider) $("av-api-provider").value = c.provider;
+    if (c.api_url) $("av-api-url").value = c.api_url;
+    if (c.api_key) $("av-api-key").value = c.api_key;
+  } catch (e) { /* ignore */ }
+}
+
+async function aiSaveVideoAPIConfig() {
+  const cfg = {
+    provider: $("av-api-provider").value,
+    api_url: $("av-api-url").value.trim(),
+    api_key: $("av-api-key").value.trim(),
+  };
+  if (cfg.provider === "generic" && (!cfg.api_url || !cfg.api_key)) {
+    toast("generic 模式必须填写 API URL 与 API Key", "error");
+    return;
+  }
+  setVideoAPIConfig(cfg);
+  renderVideoAPIStatus();
+  toast("API 配置已保存", "success");
+}
+
+async function aiClearVideoAPIConfig() {
+  clearVideoAPIConfig();
+  $("av-api-provider").value = "mock";
+  $("av-api-url").value = "";
+  $("av-api-key").value = "";
+  renderVideoAPIStatus();
+  toast("API 配置已清除，恢复使用服务端默认", "success");
+}
+
+async function aiTestVideoAPIConfig() {
+  const cfg = {
+    provider: $("av-api-provider").value,
+    api_url: $("av-api-url").value.trim(),
+    api_key: $("av-api-key").value.trim(),
+  };
+  const msgEl = $("av-api-msg");
+  msgEl.textContent = "测试中…";
+  msgEl.className = "cfg-msg";
+  try {
+    const data = await api("/api/video/test-config", { method: "POST", body: cfg });
+    msgEl.textContent = data.message;
+    msgEl.className = "cfg-msg " + (data.ok ? "ok" : "err");
+    if (data.ok) toast("连接成功", "success");
+  } catch (e) {
+    msgEl.textContent = e.message;
+    msgEl.className = "cfg-msg err";
+    toast("测试失败：" + e.message, "error");
+  }
 }
 
 // 根据模型最大时长生成可选秒数列表（>16 秒用步长 5，并补全最大值）
@@ -471,7 +583,7 @@ async function aiSubmit() {
       // 每个模型按自身上限自动适配时长与分辨率，保证提交合法
       const effDur = Math.min(dur, m.max_duration);
       const effRes = m.resolutions.includes(res) ? res : m.resolutions[0];
-      const payload = { model: m.id, duration: effDur, resolution: effRes, style, prompt };
+      const payload = withVideoAPI({ model: m.id, duration: effDur, resolution: effRes, style, prompt });
       try {
         const data = await api("/api/video/submit", { method: "POST", body: payload });
         avBatchIds.push(data.task_id);

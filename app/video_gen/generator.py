@@ -38,7 +38,8 @@ class VideoTaskManager:
                source_topic: str | None = None, model: str | None = None,
                bitable_record_id: str | None = None,
                bitable_table_id: str | None = None,
-               notify: bool = True) -> str:
+               notify: bool = True,
+               api_config: dict | None = None) -> str:
         task_id = "vt_" + uuid.uuid4().hex[:12]
         now = time.time()
         rec = TaskRecord(
@@ -46,14 +47,15 @@ class VideoTaskManager:
             status=TaskStatus.SUBMITTED.value, created_at=now, updated_at=now,
             payload={"prompt": prompt, "duration": duration, "resolution": resolution,
                      "style": style, "model": model, "ref_image": ref_image,
-                     "source_topic": source_topic},
+                     "source_topic": source_topic, "api_config": api_config},
             bitable_record_id=bitable_record_id, bitable_table_id=bitable_table_id,
             notify=notify,
         )
         self.store.create(rec)
         logger.info("创建视频生成任务 %s", task_id)
         try:
-            pid = self.client.submit(prompt, duration, resolution, style, ref_image, model)
+            pid = self.client.submit(prompt, duration, resolution, style, ref_image, model,
+                                     api_config=api_config)
             self.store.update(task_id, provider_task_id=pid, status=TaskStatus.PROCESSING.value)
             logger.info("任务 %s 已提交第三方，provider_task_id=%s", task_id, pid)
         except RateLimitError as e:
@@ -107,6 +109,7 @@ class VideoTaskManager:
             self._on_terminal(rec.task_id, TaskStatus.TIMEOUT.value, error="任务超时未完成")
             return
 
+        api_config = rec.payload.get("api_config")
         # 限流且尚未拿到 provider_task_id -> 退避后重试「提交」
         if rec.status == TaskStatus.RATE_LIMITED.value and not rec.provider_task_id:
             try:
@@ -117,6 +120,7 @@ class VideoTaskManager:
                     style=rec.payload.get("style", ""),
                     ref_image=rec.payload.get("ref_image"),
                     model=rec.payload.get("model"),
+                    api_config=api_config,
                 )
                 self.store.update(rec.task_id, provider_task_id=pid,
                                   status=TaskStatus.PROCESSING.value, error=None)
@@ -136,7 +140,7 @@ class VideoTaskManager:
 
         # 已有 provider_task_id -> 轮询查询
         try:
-            info = self.client.query(rec.provider_task_id)
+            info = self.client.query(rec.provider_task_id, api_config=api_config)
         except RateLimitError:
             n = rec.retries + 1
             if n >= settings.VIDEO_GEN_MAX_RETRIES:
