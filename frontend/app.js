@@ -368,7 +368,7 @@ function buildDurationOptions(maxDuration) {
 
 async function initAIVideo() {
   try {
-    const data = await api("/video/models");
+    const data = await api("/api/video/models");
     avModels = (data && data.models) || [];
   } catch (e) {
     avModels = [];
@@ -446,7 +446,7 @@ async function aiSubmit() {
       style: $("av-style").value,
       prompt: $("av-prompt").value.trim(),
     };
-    const data = await api("/video/submit", { method: "POST", body: payload });
+    const data = await api("/api/video/submit", { method: "POST", body: payload });
     $("av-taskId").value = data.task_id;          // 自动回填任务 ID
     $("av-result").textContent = JSON.stringify(data, null, 2);
     avRenderStatus(data);
@@ -486,7 +486,7 @@ async function aiQuery() {
   const id = $("av-taskId").value.trim();
   if (!id) { toast("请填写任务 ID", "error"); return null; }
   try {
-    const data = await api("/video/status/" + encodeURIComponent(id));
+    const data = await api("/api/video/status/" + encodeURIComponent(id));
     $("av-result").textContent = JSON.stringify(data, null, 2);
     avRenderStatus(data);
     return data;
