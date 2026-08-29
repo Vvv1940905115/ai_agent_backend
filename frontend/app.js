@@ -42,6 +42,117 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ---------- 每个使用者自带 API 模型配置（存 localStorage）----------
+const LLM_STORE_KEY = "ai_llm_config";
+
+// 各服务商默认模型，便于用户少填
+const PROVIDER_DEFAULT_MODEL = {
+  deepseek: "deepseek-chat",
+  doubao: "ep-xxxxxxxx",
+  qwen: "qwen-plus",
+};
+
+function getLLMConfig() {
+  try {
+    const raw = localStorage.getItem(LLM_STORE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c.api_key) return null;
+    const out = { provider: c.provider, api_key: c.api_key };
+    if (c.model) out.model = c.model;
+    if (c.base_url) out.base_url = c.base_url;
+    if (c.emb_provider && c.emb_key) {
+      out.embedding_provider = c.emb_provider;
+      out.embedding_api_key = c.emb_key;
+      if (c.emb_model) out.embedding_model = c.emb_model;
+    }
+    return out;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 把当前使用者的 API 配置并入请求体（仅对支持 llm 字段的接口生效）
+function withLLM(body) {
+  const cfg = getLLMConfig();
+  if (!cfg) return body;
+  return Object.assign({}, body, { llm: cfg });
+}
+
+function renderLLMStatus() {
+  const c = getLLMConfig();
+  const el = $("llmStatus");
+  if (c) {
+    el.textContent = "模型：" + (c.provider || "custom") + (c.model ? " / " + c.model : "");
+    el.classList.add("configured");
+  } else {
+    el.textContent = "未配置模型";
+    el.classList.remove("configured");
+  }
+}
+
+function openApiModal() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem(LLM_STORE_KEY) || "{}"); } catch (e) {}
+  $("cfg-provider").value = c.provider || "deepseek";
+  $("cfg-model").value = c.model || (c.provider && PROVIDER_DEFAULT_MODEL[c.provider]) || "";
+  $("cfg-key").value = c.api_key || "";
+  $("cfg-baseurl").value = c.base_url || "";
+  $("cfg-emb-provider").value = c.emb_provider || "";
+  $("cfg-emb-model").value = c.emb_model || "";
+  $("cfg-emb-key").value = c.emb_key || "";
+  toggleCustomBaseUrl();
+  $("cfg-msg").textContent = "";
+  $("apiModal").classList.remove("hidden");
+}
+
+function toggleCustomBaseUrl() {
+  const isCustom = $("cfg-provider").value === "custom";
+  $("cfg-baseurl").closest(".cfg-custom").classList.toggle("hidden", !isCustom);
+}
+
+function saveApiConfig() {
+  const provider = $("cfg-provider").value;
+  const api_key = $("cfg-key").value.trim();
+  if (!api_key) { $("cfg-msg").className = "cfg-msg err"; $("cfg-msg").textContent = "请填写 API Key"; return; }
+  if (provider === "custom" && !$("cfg-baseurl").value.trim()) {
+    $("cfg-msg").className = "cfg-msg err"; $("cfg-msg").textContent = "自定义服务商需填写 Base URL"; return;
+  }
+  const cfg = {
+    provider,
+    api_key,
+    model: $("cfg-model").value.trim() || PROVIDER_DEFAULT_MODEL[provider] || "",
+    base_url: $("cfg-baseurl").value.trim(),
+    emb_provider: $("cfg-emb-provider").value,
+    emb_model: $("cfg-emb-model").value.trim(),
+    emb_key: $("cfg-emb-key").value.trim(),
+  };
+  localStorage.setItem(LLM_STORE_KEY, JSON.stringify(cfg));
+  renderLLMStatus();
+  $("cfg-msg").className = "cfg-msg ok"; $("cfg-msg").textContent = "已保存";
+  setTimeout(() => $("apiModal").classList.add("hidden"), 700);
+  toast("API 配置已保存", "success");
+}
+
+function clearApiConfig() {
+  localStorage.removeItem(LLM_STORE_KEY);
+  renderLLMStatus();
+  $("cfg-msg").className = "cfg-msg ok"; $("cfg-msg").textContent = "已清除，将使用服务端默认配置";
+  toast("已清除 API 配置", "success");
+}
+
+async function testApiConfig() {
+  const cfg = getLLMConfig();
+  if (!cfg) { $("cfg-msg").className = "cfg-msg err"; $("cfg-msg").textContent = "请先填写并保存配置"; return; }
+  try {
+    await api("/health");
+    $("cfg-msg").className = "cfg-msg ok";
+    $("cfg-msg").textContent = "服务可达，配置已就绪（真实可用性以首次调用为准）";
+  } catch (e) {
+    $("cfg-msg").className = "cfg-msg err"; $("cfg-msg").textContent = "无法连接后端：" + e.message;
+  }
+}
+
 // ---------- 健康探测 ----------
 async function checkHealth() {
   try {
@@ -75,7 +186,7 @@ async function genTopics() {
       hotspots: $("t-hotspots").value.trim(),
     };
     if (!payload.industry) { toast("请填写行业", "error"); return; }
-    const data = await api("/api/topic/generate", { method: "POST", body: payload });
+    const data = await api("/api/topic/generate", { method: "POST", body: withLLM(payload) });
     state.lastBatchId = data.batch_id;
     renderSummary(data);
     renderTopics(data);
@@ -209,7 +320,7 @@ async function kbIngest() {
   const text = $("k-text").value.trim();
   if (!text) { toast("请填写导入文本", "error"); return; }
   try {
-    const data = await api("/api/knowledge/ingest", { method: "POST", body: { text, source: "console" } });
+    const data = await api("/api/knowledge/ingest", { method: "POST", body: withLLM({ text, source: "console" }) });
     $("k-result").textContent = JSON.stringify(data, null, 2);
     toast("导入成功", "success");
   } catch (e) { toast("导入失败：" + e.message, "error"); }
@@ -222,7 +333,7 @@ async function runAgent() {
   try {
     const data = await api("/api/agent/run", {
       method: "POST",
-      body: { agent_type: $("a-type").value, user_input: input, max_iterations: parseInt($("a-max").value, 10) || 6 },
+      body: withLLM({ agent_type: $("a-type").value, user_input: input, max_iterations: parseInt($("a-max").value, 10) || 6 }),
     });
     $("a-result").textContent = JSON.stringify(data, null, 2);
     toast("Agent 运行完成", "success");
@@ -236,8 +347,8 @@ async function analyze() {
   if (!url && !text) { toast("请填写链接或文案", "error"); return; }
   try {
     const data = url
-      ? await api("/api/short-video/analyze-url", { method: "POST", body: { url } })
-      : await api("/api/short-video/analyze-text", { method: "POST", body: { text } });
+      ? await api("/api/short-video/analyze-url", { method: "POST", body: withLLM({ url }) })
+      : await api("/api/short-video/analyze-text", { method: "POST", body: withLLM({ text }) });
     $("s-result").textContent = JSON.stringify(data, null, 2);
     toast("分析完成", "success");
   } catch (e) { toast("分析失败：" + e.message, "error"); }
@@ -254,10 +365,26 @@ function bind() {
   $("btnKIngest").addEventListener("click", kbIngest);
   $("btnARun").addEventListener("click", runAgent);
   $("btnSAnalyze").addEventListener("click", analyze);
+
+  // API 配置弹窗
+  $("btnApiConfig").addEventListener("click", openApiModal);
+  $("btnApiClose").addEventListener("click", () => $("apiModal").classList.add("hidden"));
+  $("btnApiSave").addEventListener("click", saveApiConfig);
+  $("btnApiClear").addEventListener("click", clearApiConfig);
+  $("btnApiTest").addEventListener("click", testApiConfig);
+  $("cfg-provider").addEventListener("change", () => {
+    toggleCustomBaseUrl();
+    if (!$("cfg-model").value.trim() && PROVIDER_DEFAULT_MODEL[$("cfg-provider").value]) {
+      $("cfg-model").value = PROVIDER_DEFAULT_MODEL[$("cfg-provider").value];
+    }
+  });
+  $("apiModal").addEventListener("click", (e) => { if (e.target.id === "apiModal") $("apiModal").classList.add("hidden"); });
+
   $("baseUrl").addEventListener("change", (e) => { state.base = e.target.value.trim() || window.location.origin; checkHealth(); });
   $("baseUrl").value = state.base;
 }
 
 bind();
+renderLLMStatus();
 checkHealth();
 setInterval(checkHealth, 15000);

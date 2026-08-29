@@ -57,16 +57,26 @@ class LocalEmbedding:
         return [text[i:i + n] for i in range(len(text) - n + 1)]
 
 
-def get_embedder():
-    """根据配置返回 embedder（真实模型走 OpenAI 兼容，本地走 LocalEmbedding）。"""
-    provider = settings.EMBEDDING_PROVIDER
+def get_embedder(override=None):
+    """根据配置返回 embedder（真实模型走 OpenAI 兼容，本地走 LocalEmbedding）。
+
+    override：可选 LLMOverride，用于每个使用者自带 embedding 密钥（优先于全局 .env）。
+    """
+    from app.agent.llm import llm_override_ctx, resolve_embedding_llm
+    ov = override or llm_override_ctx.get()
+    # 云端 embedding 是否由覆盖提供密钥
+    if ov and ov.embedding_api_key:
+        provider = ov.embedding_provider or settings.EMBEDDING_PROVIDER
+    else:
+        provider = settings.EMBEDDING_PROVIDER
+
     if provider == "local":
         logger.warning("使用本地兜底 embedding（非语义向量），生产请配置 qwen/doubao")
         return LocalEmbedding(dim=settings.EMBEDDING_DIM)
 
-    from app.agent.llm import get_embedding_llm
-    client = get_embedding_llm(provider)
-    model = settings.QWEN_MODEL if provider == "qwen" else settings.DOUBAO_MODEL
+    client = resolve_embedding_llm(override)
+    model = (ov.embedding_model if (ov and ov.embedding_model) else
+             (settings.QWEN_MODEL if provider == "qwen" else settings.DOUBAO_MODEL))
 
     class _Remote:
         def embed(self, texts: list[str]) -> list[list[float]]:

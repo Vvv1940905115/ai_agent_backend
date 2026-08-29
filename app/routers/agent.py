@@ -7,6 +7,7 @@ from app.agents.short_video_agent import ShortVideoAgent
 from app.agents.topic_agent import TopicAgent
 from app.agents.video_pipeline_agent import VideoPipelineAgent
 from app.agent.base import BaseAgent
+from app.agent.llm import LLMOverride
 from app.core.exceptions import BusinessError
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -25,6 +26,7 @@ class AgentRunReq(BaseModel):
     user_input: str
     conversation_id: str | None = None
     max_iterations: int = 6
+    llm: LLMOverride | None = None   # 可选：每个使用者自带 API 模型
 
 
 @router.post("/run")
@@ -34,6 +36,6 @@ def agent_run(req: AgentRunReq):
     if not agent_cls:
         raise BusinessError(f"未知 agent_type: {req.agent_type}", code=400,
                             detail=list(AGENTS.keys()))
-    agent: BaseAgent = agent_cls(max_iterations=req.max_iterations)
+    agent: BaseAgent = agent_cls(max_iterations=req.max_iterations, llm_override=req.llm)
     result = agent.run(req.user_input, conversation_id=req.conversation_id)
     return {"code": 0, "agent": agent.name, **result}

@@ -149,3 +149,35 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 .toast.error { background: var(--red); }
 .toast.success { background: var(--green); }
+
+/* ---------- API 配置：状态徽标 ---------- */
+.llm-status {
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  background: #fff5f5; color: var(--red); border: 1px solid #f3c2c2;
+}
+.llm-status.configured { background: #eafaf0; color: var(--green); border-color: #b9e6c9; }
+
+/* ---------- 弹窗 ---------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(16, 24, 40, .45);
+  display: flex; align-items: center; justify-content: center; z-index: 200; padding: 16px;
+}
+.modal.hidden { display: none; }
+.modal-card {
+  background: var(--panel); border-radius: 14px; width: 560px; max-width: 100%;
+  max-height: 90vh; overflow: auto; box-shadow: var(--shadow); padding: 20px 22px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.modal-head h3 { margin: 0; font-size: 17px; }
+.icon-btn {
+  border: none; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted);
+}
+.modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.cfg-msg { font-size: 13px; }
+.cfg-msg.ok { color: var(--green); }
+.cfg-msg.err { color: var(--red); }
+.adv { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.adv summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.btn.ghost { background: #fff; border: 1px solid var(--border); color: var(--text); }
+.btn.ghost:hover { background: #f1f5f9; }
+.cfg-custom.hidden { display: none; }

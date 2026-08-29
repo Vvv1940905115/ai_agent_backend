@@ -10,11 +10,11 @@ import re
 from app.knowledge.embeddings import get_embedder
 from app.knowledge.vector_store import VectorStore
 from app.core.logging import get_logger
+from app.agent.llm import LLMOverride
 
 logger = get_logger("knowledge.ingest")
 
 _store = VectorStore()
-_embedder = get_embedder()
 
 
 def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
@@ -29,18 +29,23 @@ def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]
     return chunks
 
 
-def ingest_document(text: str, source: str = "manual", meta: dict | None = None) -> dict:
+def ingest_document(text: str, source: str = "manual", meta: dict | None = None,
+                   llm_override: LLMOverride | None = None) -> dict:
     """把一篇文档切分、向量化并写入知识库。"""
     chunks = chunk_text(text)
     if not chunks:
         return {"error": "空文档"}
-    embs = _embedder.embed(chunks)
+    embedder = get_embedder(llm_override)
+    embs = embedder.embed(chunks)
     metas = [{"source": source, **(meta or {}), "chunk": i} for i in range(len(chunks))]
     _store.upsert(embs, chunks, metas)
     return {"ingested": len(chunks), "source": source}
 
 
-def search_knowledge(query: str, top_k: int = 3) -> list[dict]:
+def search_knowledge(query: str, top_k: int = 3,
+                     llm_override: LLMOverride | None = None) -> list[dict]:
     """用自然语言查询知识库，返回最相关片段。"""
-    q_vec = _embedder.embed([query])[0]
+    embedder = get_embedder(llm_override)
+    q_vec = embedder.embed([query])[0]
     return _store.search(q_vec, top_k=top_k)
+

@@ -14,7 +14,8 @@ AI 选题能力（TopicSelector）
 import json
 import uuid
 
-from app.agent.llm import get_active_llm
+from app.agent.llm import resolve_llm
+from app.agent.llm import LLMOverride
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.topic.quality import enrich_topics
@@ -40,8 +41,9 @@ def _extract_json_array(text: str) -> list:
 
 
 class TopicSelector:
-    def __init__(self):
-        self.llm = get_active_llm()  # 缺 key 时抛 RuntimeError（与现有 LLM 层一致）
+    def __init__(self, llm_override: LLMOverride | None = None):
+        # 优先级：显式覆盖 > 请求级 contextvar > 全局 .env
+        self.llm = resolve_llm(llm_override)  # 缺 key 时抛 RuntimeError（与现有 LLM 层一致）
 
     def _generate_raw(self, industry: str, style: str, count: int,
                       context: str, hotspots: str) -> list[dict]:

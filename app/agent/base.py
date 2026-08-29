@@ -12,7 +12,8 @@
 import json
 from typing import Optional
 
-from app.agent.llm import get_active_llm
+from app.agent.llm import llm_override_ctx, resolve_llm
+from app.agent.llm import LLMOverride
 from app.agent.tool import dispatch, get_tools_schema
 from app.core.logging import get_logger
 
@@ -24,9 +25,11 @@ class BaseAgent:
     system_prompt: str = "你是一个乐于助人的企业 AI 助手，可调用工具完成任务。"
     tool_names: list[str] = []
 
-    def __init__(self, max_iterations: int = 6, temperature: float = 0.3):
+    def __init__(self, max_iterations: int = 6, temperature: float = 0.3,
+                 llm_override: LLMOverride | None = None):
         self.max_iterations = max_iterations
         self.temperature = temperature
+        self._llm_override = llm_override
         # 会话记忆：conversation_id -> messages
         self._memory: dict[str, list[dict]] = {}
 
@@ -51,60 +54,67 @@ class BaseAgent:
         messages.append({"role": "user", "content": user_input})
 
         tools_schema = get_tools_schema(self.tool_names)
-        llm = get_active_llm()
-        used_tools: list[str] = []
+        # 让本次运行的 LLM 覆盖（用户自带 API 模型）贯穿工具链（工具内也会创建 TopicSelector 等）
+        token = llm_override_ctx.set(self._llm_override) if self._llm_override is not None else None
+        try:
+            llm = resolve_llm()
+            used_tools: list[str] = []
 
-        for i in range(self.max_iterations):
-            try:
-                resp = llm.chat(
-                    messages=messages,
-                    tools=tools_schema or None,
-                    temperature=self.temperature,
-                )
-            except Exception as e:
-                logger.exception("LLM 调用失败")
-                return {"content": f"LLM 调用失败: {e}", "iterations": i + 1, "tool_calls": used_tools}
-
-            msg = resp.choices[0].message
-
-            # 没有工具调用 -> 任务完成，返回最终文本
-            if not msg.tool_calls:
-                messages.append({"role": "assistant", "content": msg.content or ""})
-                self._save(conversation_id, messages)
-                return {"content": msg.content or "", "iterations": i + 1, "tool_calls": used_tools}
-
-            # 有工具调用 -> 执行并把结果回灌
-            messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in msg.tool_calls
-                ],
-            })
-            for tc in msg.tool_calls:
-                fn_name = tc.function.name
+            for i in range(self.max_iterations):
                 try:
-                    args = json.loads(tc.function.arguments or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                logger.info("[%s] 调用工具 %s(%s)", self.name, fn_name, args)
-                result = dispatch(tool_name=fn_name, **args)
-                used_tools.append(fn_name)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": fn_name,
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
+                    resp = llm.chat(
+                        messages=messages,
+                        tools=tools_schema or None,
+                        temperature=self.temperature,
+                    )
+                except Exception as e:
+                    logger.exception("LLM 调用失败")
+                    return {"content": f"LLM 调用失败: {e}", "iterations": i + 1, "tool_calls": used_tools}
 
-        # 达到最大迭代仍未产出文本
-        return {
-            "content": "（已达到最大工具调用轮次，请简化任务或提高 max_iterations）",
-            "iterations": self.max_iterations,
-            "tool_calls": used_tools,
-        }
+                msg = resp.choices[0].message
+
+                # 没有工具调用 -> 任务完成，返回最终文本
+                if not msg.tool_calls:
+                    messages.append({"role": "assistant", "content": msg.content or ""})
+                    self._save(conversation_id, messages)
+                    return {"content": msg.content or "", "iterations": i + 1, "tool_calls": used_tools}
+
+                # 有工具调用 -> 执行并把结果回灌
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                })
+                for tc in msg.tool_calls:
+                    fn_name = tc.function.name
+                    try:
+                        args = json.loads(tc.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    logger.info("[%s] 调用工具 %s(%s)", self.name, fn_name, args)
+                    result = dispatch(tool_name=fn_name, **args)
+                    used_tools.append(fn_name)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": fn_name,
+                        "content": json.dumps(result, ensure_ascii=False),
+                    })
+
+            # 达到最大迭代仍未产出文本
+            return {
+                "content": "（已达到最大工具调用轮次，请简化任务或提高 max_iterations）",
+                "iterations": self.max_iterations,
+                "tool_calls": used_tools,
+            }
+        finally:
+            if token is not None:
+                llm_override_ctx.reset(token)
+

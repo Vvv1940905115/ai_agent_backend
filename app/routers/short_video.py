@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.video.analyzer import analyze_content, analyze_url
+from app.agent.llm import LLMOverride
 from app.core.exceptions import BusinessError
 
 router = APIRouter(prefix="/api/short-video", tags=["short-video"])
@@ -10,18 +11,20 @@ router = APIRouter(prefix="/api/short-video", tags=["short-video"])
 
 class AnalyzeUrlReq(BaseModel):
     url: str
+    llm: LLMOverride | None = None   # 可选：每个使用者自带 API 模型
 
 
 class AnalyzeTextReq(BaseModel):
     title: str = ""
     text: str
+    llm: LLMOverride | None = None   # 可选：每个使用者自带 API 模型
 
 
 @router.post("/analyze-url")
 def analyze_url_api(req: AnalyzeUrlReq):
     """输入链接，返回抓取元数据 + 大模型分析。"""
     try:
-        return {"code": 0, **analyze_url(req.url)}
+        return {"code": 0, **analyze_url(req.url, llm_override=req.llm)}
     except Exception as e:
         raise BusinessError(f"抓取/分析失败: {e}", code=502)
 
@@ -29,4 +32,4 @@ def analyze_url_api(req: AnalyzeUrlReq):
 @router.post("/analyze-text")
 def analyze_text_api(req: AnalyzeTextReq):
     """直接分析文案文本。"""
-    return {"code": 0, "analysis": analyze_content(text=req.text, title=req.title)}
+    return {"code": 0, "analysis": analyze_content(text=req.text, title=req.title, llm_override=req.llm)}

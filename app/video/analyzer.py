@@ -8,7 +8,8 @@
 """
 import json
 
-from app.agent.llm import get_active_llm
+from app.agent.llm import resolve_llm
+from app.agent.llm import LLMOverride
 from app.core.logging import get_logger
 
 logger = get_logger("video.analyzer")
@@ -20,14 +21,15 @@ _SYSTEM = (
 )
 
 
-def analyze_content(text: str, title: str = "") -> dict:
+def analyze_content(text: str, title: str = "", llm_override: LLMOverride | None = None) -> dict:
     """
     调用大模型分析文本内容（标题+正文）。返回 dict。
+    llm_override：可选，用户自带 API 模型配置（优先于全局 .env）。
     """
     if not text and not title:
         return {"error": "缺少可分析文本"}
 
-    llm = get_active_llm()
+    llm = resolve_llm(llm_override)
     user_msg = f"标题：{title}\n素材：{text}"
     try:
         resp = llm.chat(
@@ -49,10 +51,10 @@ def analyze_content(text: str, title: str = "") -> dict:
         return {"error": str(e)}
 
 
-def analyze_url(url: str) -> dict:
+def analyze_url(url: str, llm_override: LLMOverride | None = None) -> dict:
     """端到端：抓取 -> 提取元数据 -> 大模型分析。"""
     from app.video.fetcher import PoliteFetcher
     html = PoliteFetcher().fetch_html(url)
     meta = PoliteFetcher.extract_metadata(html, url)
-    analysis = analyze_content(text=meta.get("description", ""), title=meta.get("title", ""))
+    analysis = analyze_content(text=meta.get("description", ""), title=meta.get("title", ""), llm_override=llm_override)
     return {"metadata": meta, "analysis": analysis}

@@ -18,6 +18,7 @@ from app.core.exceptions import BusinessError
 from app.topic.store import topic_batch_store
 from app.tools.topic_tools import topic_approve, topic_generate_batch
 from app.video_gen.generator import video_task_manager
+from app.agent.llm import LLMOverride, llm_override_ctx
 
 router = APIRouter(prefix="/api", tags=["topic-video"])
 
@@ -29,6 +30,7 @@ class TopicGenerateReq(BaseModel):
     use_knowledge: bool = False
     write_to_bitable: bool = False
     enhance: bool = True
+    llm: LLMOverride | None = None   # 可选：每个使用者自带 API 模型（provider/base_url/api_key/model）
 
 
 class TopicApproveReq(BaseModel):
@@ -40,12 +42,17 @@ class TopicApproveReq(BaseModel):
 @router.post("/topic/generate")
 def topic_generate(req: TopicGenerateReq):
     """批量生成选题（默认带质量增强：去重/打分/排序）；可选基于知识库、可选写多维表格待审核。"""
-    out = topic_generate_batch(
-        industry=req.industry, style=req.style, count=req.count,
-        use_knowledge=req.use_knowledge, write_to_bitable=req.write_to_bitable,
-        enhance=req.enhance,
-    )
-    return {"code": 0, **out}
+    token = llm_override_ctx.set(req.llm) if req.llm is not None else None
+    try:
+        out = topic_generate_batch(
+            industry=req.industry, style=req.style, count=req.count,
+            use_knowledge=req.use_knowledge, write_to_bitable=req.write_to_bitable,
+            enhance=req.enhance,
+        )
+        return {"code": 0, **out}
+    finally:
+        if token is not None:
+            llm_override_ctx.reset(token)
 
 
 @router.post("/topic/approve")
@@ -103,13 +110,19 @@ class PipelineReq(BaseModel):
     write_to_bitable: bool = True
     notify: bool = True
     ref_image: str | None = None
+    llm: LLMOverride | None = None   # 可选：每个使用者自带 API 模型
 
 
 @router.post("/pipeline/topic-to-video")
 def pipeline_topic_to_video(req: PipelineReq):
     """方案B 全链路：解析参考短视频 -> 生成 AI 选题 -> 提交视频生成任务。"""
     from app.agents.video_pipeline_agent import run_topic_to_video_pipeline
-    return {"code": 0, **run_topic_to_video_pipeline(
-        video_url=req.video_url, industry=req.industry, style=req.style, count=req.count,
-        write_to_bitable=req.write_to_bitable, notify=req.notify, ref_image=req.ref_image,
-    )}
+    token = llm_override_ctx.set(req.llm) if req.llm is not None else None
+    try:
+        return {"code": 0, **run_topic_to_video_pipeline(
+            video_url=req.video_url, industry=req.industry, style=req.style, count=req.count,
+            write_to_bitable=req.write_to_bitable, notify=req.notify, ref_image=req.ref_image,
+        )}
+    finally:
+        if token is not None:
+            llm_override_ctx.reset(token)

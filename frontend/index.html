@@ -13,6 +13,8 @@
       <span>AI Agent 控制台</span>
     </div>
     <div class="topbar-right">
+      <span id="llmStatus" class="llm-status" title="当前使用的 API 模型">未配置模型</span>
+      <button id="btnApiConfig" class="btn ghost">⚙ API 配置</button>
       <label class="base-url">
         后端地址
         <input id="baseUrl" type="text" value="" placeholder="http://localhost:8000" />
@@ -21,6 +23,60 @@
       <span id="healthText" class="health-text">检测中…</span>
     </div>
   </header>
+
+  <!-- API 配置弹窗：每个使用者填入自己的模型/Key -->
+  <div id="apiModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>API 模型配置</h3>
+        <button id="btnApiClose" class="icon-btn">×</button>
+      </div>
+      <p class="hint">配置仅保存在本机浏览器（localStorage），每次请求自动携带。他人使用同一控制台会填入各自的密钥。</p>
+      <div class="form-grid">
+        <label>服务商
+          <select id="cfg-provider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="doubao">豆包（火山方舟）</option>
+            <option value="qwen">通义千问</option>
+            <option value="custom">自定义（OpenAI 兼容）</option>
+          </select>
+        </label>
+        <label>模型名
+          <input id="cfg-model" type="text" placeholder="如 deepseek-chat" />
+        </label>
+        <label class="wide">API Key
+          <input id="cfg-key" type="password" placeholder="sk-..." autocomplete="off" />
+        </label>
+        <label class="wide cfg-custom">Base URL（自定义时必填）
+          <input id="cfg-baseurl" type="text" placeholder="https://your-endpoint/v1" />
+        </label>
+      </div>
+      <details class="adv">
+        <summary>高级：云端向量（embedding）密钥（可选）</summary>
+        <div class="form-grid">
+          <label>Embedding 服务商
+            <select id="cfg-emb-provider">
+              <option value="">不单独配置（用本地兜底）</option>
+              <option value="qwen">通义千问</option>
+              <option value="doubao">豆包</option>
+            </select>
+          </label>
+          <label>Embedding 模型
+            <input id="cfg-emb-model" type="text" placeholder="如 text-embedding-v3" />
+          </label>
+          <label class="wide">Embedding API Key
+            <input id="cfg-emb-key" type="password" placeholder="可选" autocomplete="off" />
+          </label>
+        </div>
+      </details>
+      <div class="modal-actions">
+        <button id="btnApiSave" class="btn primary">保存</button>
+        <button id="btnApiClear" class="btn ghost">清除</button>
+        <button id="btnApiTest" class="btn ghost">测试连接</button>
+        <span id="cfg-msg" class="cfg-msg"></span>
+      </div>
+    </div>
+  </div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="topic">选题中心</button>
