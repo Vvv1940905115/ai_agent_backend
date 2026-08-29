@@ -242,18 +242,19 @@
         <header class="page-head">
           <div>
             <h2>AI 视频异步生成</h2>
-            <p class="hint">选择模型与参数提交任务（异步），提交后通过任务 ID 查询进度并获取成片。切换模型会自动更新可选时长与分辨率。</p>
+            <p class="hint">可勾选多个模型一次批量提交（异步）；各模型按自身时长/分辨率上限自动适配。提交后在下方查看各任务状态与成片，可一键轮询全部。</p>
           </div>
         </header>
 
         <!-- 任务参数 -->
         <div class="card">
           <div class="card-header"><span class="card-title">任务参数</span></div>
-          <div class="form-grid cols-2">
-            <label class="field">
-              <span class="field-label">模型</span>
-              <select id="av-model"></select>
-            </label>
+          <label class="field block">
+            <span class="field-label">模型（可多选，一次提交到多个模型）</span>
+            <div id="av-models" class="model-checks"></div>
+            <span id="av-model-hint" class="hint inline"></span>
+          </label>
+          <div class="form-grid cols-3">
             <label class="field">
               <span class="field-label">时长（秒）</span>
               <select id="av-duration"></select>
@@ -295,13 +296,15 @@
             <input id="av-taskId" type="text" placeholder="提交后自动回填，也可手动粘贴" />
           </label>
           <div class="actions">
-            <button id="av-query" class="btn">查询进度</button>
-            <button id="av-poll" class="btn">自动轮询</button>
+            <button id="av-query" class="btn">查询进度（单个）</button>
+            <button id="av-poll" class="btn">自动轮询（单个）</button>
+            <button id="av-poll-all" class="btn">轮询全部</button>
           </div>
         </div>
 
         <div class="result-card">
           <div class="result-header">任务状态与成片</div>
+          <div id="av-tasks" class="av-tasks"></div>
           <div id="av-status" class="av-status"></div>
           <pre id="av-result" class="result-box"></pre>
         </div>

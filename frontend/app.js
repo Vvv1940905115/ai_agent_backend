@@ -337,6 +337,7 @@ function bind() {
   $("av-poll").addEventListener("click", aiPoll);
   $("av-apply").addEventListener("click", avApplyJson);
   $("av-get").addEventListener("click", avExportJson);
+  $("av-poll-all").addEventListener("click", aiPollAll);
 }
 
 bind();
@@ -349,6 +350,8 @@ setInterval(checkHealth, 15000);
 // 模型规格由后端 /api/video/models 提供（单一事实来源）；前端仅做动态联动与校验。
 let avModels = [];
 let avPollTimer = null;
+let avBatchIds = [];
+let avBatchTimer = null;
 
 function avFindModel(id) {
   return avModels.find((m) => m.id === id) || null;
@@ -374,27 +377,47 @@ async function initAIVideo() {
     avModels = [];
     console.warn("获取视频模型列表失败：", e.message);
   }
-  const sel = $("av-model");
-  sel.innerHTML = "";
+  const box = $("av-models");
+  box.innerHTML = "";
   avModels.forEach((m) => {
-    const o = document.createElement("option");
-    o.value = m.id;
-    o.textContent = m.name;
-    sel.appendChild(o);
+    const lab = document.createElement("label");
+    lab.className = "model-check";
+    lab.innerHTML = `<input type="checkbox" id="avm-${esc(m.id)}" value="${esc(m.id)}" /> <span>${esc(m.name)}</span>`;
+    box.appendChild(lab);
   });
-  sel.addEventListener("change", avOnModelChange);
-  if (avModels.length) avOnModelChange();
-  else $("av-err").textContent = "未能加载模型列表，请确认后端 /api/video/models 可用";
+  box.addEventListener("change", avUpdateConstraints);
+  // 默认勾选用户指定的三个模型：Seedance 2.0 / Seedance 2.5 / Minmax H3
+  ["seedance_2_0_std", "seedance_2_5", "minmax_h3"].forEach((id) => {
+    const cb = document.getElementById("avm-" + id);
+    if (cb) cb.checked = true;
+  });
+  if (avModels.length) avUpdateConstraints();
+  else $("av-model-hint").textContent = "未能加载模型列表，请确认后端 /api/video/models 可用";
 }
 
-// 切换模型 → 动态更新时长可选项 + 置灰不支持的分辨率
-function avOnModelChange() {
-  const m = avFindModel($("av-model").value);
-  if (!m) return;
-  // 时长
+// 当前勾选的模型对象列表
+function avCheckedModels() {
+  return Array.from(document.querySelectorAll("#av-models input[type=checkbox]:checked"))
+    .map((cb) => avFindModel(cb.value))
+    .filter(Boolean);
+}
+
+// 多选 → 联动时长/分辨率可选项（取所有勾选模型中最严约束，并保证每个模型都能跑通）
+function avUpdateConstraints() {
+  const checked = avCheckedModels();
+  const hint = $("av-model-hint");
+  if (!checked.length) {
+    hint.textContent = "请至少勾选一个模型";
+    $("av-duration").innerHTML = "";
+    return;
+  }
+  const minMax = Math.min(...checked.map((m) => m.max_duration));
+  const unionRes = new Set();
+  checked.forEach((m) => m.resolutions.forEach((r) => unionRes.add(r)));
+  // 时长：取勾选模型中最短上限，保证所选时长对所有模型都合法
   const dur = $("av-duration");
   const cur = parseInt(dur.value, 10);
-  const opts = buildDurationOptions(m.max_duration);
+  const opts = buildDurationOptions(minMax);
   dur.innerHTML = "";
   opts.forEach((s) => {
     const o = document.createElement("option");
@@ -402,16 +425,17 @@ function avOnModelChange() {
     o.textContent = s + " 秒";
     dur.appendChild(o);
   });
-  if (cur && cur <= m.max_duration) dur.value = cur;
-  else dur.value = opts[opts.length - 1];
-  // 分辨率：不支持的置灰不可选，并自动切到第一个支持的
+  dur.value = cur && cur <= minMax ? cur : opts[opts.length - 1];
+  // 分辨率：不在“支持集合”内的置灰；若当前选中被置灰则切到第一个支持的
   const resSel = $("av-resolution");
-  Array.from(resSel.options).forEach((o) => { o.disabled = !m.resolutions.includes(o.value); });
+  Array.from(resSel.options).forEach((o) => { o.disabled = !unionRes.has(o.value); });
   const selOpt = resSel.options[resSel.selectedIndex];
   if (selOpt && selOpt.disabled) {
     const firstOk = Array.from(resSel.options).find((o) => !o.disabled);
     if (firstOk) resSel.value = firstOk.value;
   }
+  const resTxt = [...unionRes].join(" / ");
+  hint.textContent = `已选 ${checked.length} 个模型 · 时长上限 ${minMax}s（取最严）· 支持分辨率：${resTxt}；提交时各模型按自身上限自动适配`;
 }
 
 function avSetErr(msg) {
@@ -421,13 +445,10 @@ function avSetErr(msg) {
 }
 
 function avValidate() {
-  const m = avFindModel($("av-model").value);
-  if (!m) return "请选择模型";
+  const models = avCheckedModels();
+  if (!models.length) return "请至少勾选一个模型";
   const dur = parseInt($("av-duration").value, 10);
   if (!dur || dur <= 0) return "请选择时长";
-  if (dur > m.max_duration) return `模型 ${m.name} 最长 ${m.max_duration} 秒`;
-  const res = $("av-resolution").value;
-  if (!m.resolutions.includes(res)) return `模型 ${m.name} 不支持分辨率 ${res}`;
   if (!$("av-prompt").value.trim()) return "请填写提示词 Prompt";
   return null;
 }
@@ -439,21 +460,32 @@ async function aiSubmit() {
   const btn = $("av-submit");
   btn.disabled = true;
   try {
-    const payload = {
-      model: $("av-model").value,
-      duration: parseInt($("av-duration").value, 10),
-      resolution: $("av-resolution").value,
-      style: $("av-style").value,
-      prompt: $("av-prompt").value.trim(),
-    };
-    const data = await api("/api/video/submit", { method: "POST", body: payload });
-    $("av-taskId").value = data.task_id;          // 自动回填任务 ID
-    $("av-result").textContent = JSON.stringify(data, null, 2);
-    avRenderStatus(data);
-    toast("已提交，任务 ID：" + data.task_id, "success");
-  } catch (e) {
-    avSetErr(e.message);
-    toast("提交失败：" + e.message, "error");
+    const dur = parseInt($("av-duration").value, 10);
+    const res = $("av-resolution").value;
+    const style = $("av-style").value;
+    const prompt = $("av-prompt").value.trim();
+    const models = avCheckedModels();
+    avBatchIds = [];
+    $("av-tasks").innerHTML = "";
+    for (const m of models) {
+      // 每个模型按自身上限自动适配时长与分辨率，保证提交合法
+      const effDur = Math.min(dur, m.max_duration);
+      const effRes = m.resolutions.includes(res) ? res : m.resolutions[0];
+      const payload = { model: m.id, duration: effDur, resolution: effRes, style, prompt };
+      try {
+        const data = await api("/api/video/submit", { method: "POST", body: payload });
+        avBatchIds.push(data.task_id);
+        avRenderTask(data.task_id, data, m);
+      } catch (e) {
+        avRenderTaskError(m.id, e.message);
+        toast("模型 " + m.name + " 提交失败：" + e.message, "error");
+      }
+    }
+    $("av-taskId").value = avBatchIds[0] || "";
+    $("av-result").textContent = JSON.stringify({ batch_ids: avBatchIds }, null, 2);
+    toast("已提交 " + avBatchIds.length + " 个任务", "success");
+    if (avBatchTimer) { clearInterval(avBatchTimer); avBatchTimer = null; }
+    if (avBatchIds.length) aiPollAll();
   } finally {
     btn.disabled = false;
   }
@@ -518,11 +550,91 @@ function aiPoll() {
   }, 3000);
 }
 
+// 渲染单个批量任务卡片
+function avRenderTask(id, data, model) {
+  const box = $("av-tasks");
+  let card = document.getElementById("avcard-" + id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "av-task-card";
+    card.id = "avcard-" + id;
+    box.appendChild(card);
+  }
+  const status = data.status || (data.payload && data.payload.status) || "submitted";
+  const progress = data.progress != null ? data.progress
+    : (data.payload && data.payload.progress);
+  const videoUrl = (data.result && data.result.video_url) || data.video_url || null;
+  const tier = {
+    submitted: "pending", processing: "pending", rate_limited: "pending",
+    succeeded: "ok", failed: "err", timeout: "err",
+  }[status] || "pending";
+  const p = Math.max(0, Math.min(100, Number(progress) || 0));
+  let html = `<div class="av-task-head">` +
+    `<span class="badge ${tier}">${esc(status)}</span>` +
+    `<span class="av-task-model">${esc(model ? model.name : id)}</span>` +
+    `<span class="av-task-id">${esc(id)}</span></div>` +
+    `<div class="av-progress"><div class="av-bar" style="width:${p}%"></div></div>` +
+    `<span class="av-pct">${p}%</span>`;
+  if (videoUrl) {
+    html += `<div class="av-video"><video src="${esc(videoUrl)}" controls></video>` +
+            `<div><a href="${esc(videoUrl)}" target="_blank" rel="noopener">打开视频链接</a></div></div>`;
+  }
+  card.innerHTML = html;
+}
+
+// 渲染提交失败的任务卡片
+function avRenderTaskError(id, msg) {
+  const box = $("av-tasks");
+  let card = document.getElementById("avcard-" + id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "av-task-card";
+    card.id = "avcard-" + id;
+    box.appendChild(card);
+  }
+  card.innerHTML = `<div class="av-task-head"><span class="badge err">error</span>` +
+    `<span class="av-task-id">${esc(id)}</span></div><div class="av-err-msg">${esc(msg)}</div>`;
+}
+
+// 批量轮询：遍历本次提交的全部任务 ID，全部终态后停止
+function aiPollAll() {
+  if (avBatchTimer) {
+    clearInterval(avBatchTimer); avBatchTimer = null;
+    $("av-poll-all").textContent = "轮询全部";
+    return;
+  }
+  if (!avBatchIds.length) { toast("请先批量提交", "error"); return; }
+  $("av-poll-all").textContent = "停止轮询";
+  avBatchTimer = setInterval(async () => {
+    let allDone = true;
+    for (const id of avBatchIds) {
+      try {
+        const d = await api("/api/video/status/" + encodeURIComponent(id));
+        const m = avModels.find((x) => x.id === (d.model || (d.payload && d.payload.model))) || null;
+        avRenderTask(id, d, m);
+        const s = d.status || (d.payload && d.payload.status);
+        if (!["succeeded", "failed", "timeout"].includes(s)) allDone = false;
+      } catch (e) { /* 单个查询失败忽略，继续其余 */ }
+    }
+    if (allDone) {
+      clearInterval(avBatchTimer); avBatchTimer = null;
+      $("av-poll-all").textContent = "轮询全部";
+      toast("全部任务结束", "success");
+    }
+  }, 3000);
+}
+
 // 代码回显赋值：暴露全局 API，支持编程方式给表单赋值（手动选择 / 代码赋值 双通道）
 const AIVideo = {
   set(obj = {}) {
     if (!obj) return;
-    if (obj.model) { $("av-model").value = obj.model; avOnModelChange(); }
+    if (obj.model) {
+      const ids = Array.isArray(obj.model) ? obj.model : [obj.model];
+      document.querySelectorAll("#av-models input[type=checkbox]").forEach((cb) => {
+        cb.checked = ids.includes(cb.value);
+      });
+      avUpdateConstraints();
+    }
     if (obj.duration != null) $("av-duration").value = obj.duration;
     if (obj.resolution) $("av-resolution").value = obj.resolution;
     if (obj.style) $("av-style").value = obj.style;
@@ -531,7 +643,7 @@ const AIVideo = {
   },
   get() {
     return {
-      model: $("av-model").value,
+      model: avCheckedModels().map((m) => m.id),
       duration: $("av-duration").value,
       resolution: $("av-resolution").value,
       style: $("av-style").value,
@@ -542,6 +654,7 @@ const AIVideo = {
   submit: aiSubmit,
   query: aiQuery,
   poll: aiPoll,
+  pollAll: aiPollAll,
 };
 window.AIVideo = AIVideo;
 
