@@ -18,6 +18,8 @@
 - [五、Web 控制台使用（含「每人自带 API 配置」）](#五web-控制台使用含每人自带-api-配置)
 - [六、接口调用示例（curl）](#六接口调用示例curl)
 - [七、运行测试](#七运行测试)
+  - [7.1 发布前自检：确认代码无报错](#71-发布前自检确认代码无报错)
+  - [7.2 功能测试（接口级）](#72-功能测试接口级)
 - [八、知识库命令行入库（CLI）](#八知识库命令行入库cli)
 - [九、生产部署补充（Nginx 反向代理）](#九生产部署补充nginx-反向代理)
 - [十、常见问题与排错](#十常见问题与排错)
@@ -245,7 +247,7 @@ curl http://localhost:8000/health
 | `TOPIC_DEFAULT_STYLE` | `科普` | 默认风格（接口可覆盖） |
 | `TOPIC_DEDUPE_THRESHOLD` | `0.7` | 选题去重相似度阈值（0–1，越高越严格） |
 
-### 3.7 文生视频 / 图生视频（异步任务）
+### 3.7 AI 视频生成（异步任务：9:16 竖版 / 16:9 横版，四种生成方式）
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -258,24 +260,43 @@ curl http://localhost:8000/health
 | `VIDEO_GEN_MOCK_DELAY` | `2` | mock 模式模拟生成耗时（秒） |
 | `WECOM_NOTIFY_USER` | `@all` | 任务状态变更通知的企微接收人（`@all` 或具体 userid） |
 
+**支持的生成方式（`mode`）**
+
+| mode | 含义 | 必填参考项 |
+|---|---|---|
+| `text2video` | 文生视频（仅文字） | 无 |
+| `image2video` | 图生视频（参考图） | `ref_image`（图片 URL 或 base64 dataURL） |
+| `video2video` | 视频生视频（参考视频） | `ref_video`（视频 URL 或 base64 dataURL） |
+| `frame2video` | 首尾帧生视频 | `first_frame` + `last_frame`（两帧图） |
+
+**支持的比例（`aspect_ratio`）**：`16:9` 横版 / `9:16` 竖版。竖版时后端自动交换宽高，例如 `1920x1080` → `1080x1920`、`2K` → `1440x2560`，并在请求体中带上 `aspect_ratio` 字段（对接真实 API 时第三方据此出竖版）。
+
 **`generic` 适配器默认契约（OpenAI 兼容风格）**
 
 提交：`POST {VIDEO_GEN_API_URL}/v1/video/generations`
+
 ```json
 {
   "model": "seedance_2_5",
-  "prompt": "...",
+  "prompt": "科技感产品宣传片，蓝色调，15秒",
   "duration": 15,
-  "resolution": "2K",
-  "style": "cinematic"
+  "resolution": "1080x1920",
+  "aspect_ratio": "9:16",
+  "style": "cinematic",
+  "mode": "image2video",
+  "image": "<参考图 URL 或 base64 dataURL>"
 }
 ```
-响应需返回 `id` / `task_id` / `taskId` 任意一个。
+
+- 公共字段：`model` / `prompt` / `duration` / `resolution`（已按竖版自动转置）/ `aspect_ratio` / `style` / `mode`。
+- 按方式注入素材字段：`image2video` → `image`；`video2video` → `video`；`frame2video` → `first_frame` + `last_frame`；`text2video` 无附加字段。
+- 响应需返回 `id` / `task_id` / `taskId` 任意一个。
 
 查询：`GET {VIDEO_GEN_API_URL}/v1/video/generations/{task_id}`
+
 响应需返回 `status`/`state`、`progress`、`video_url`/`url`/`output`、`error`。
 
-> 注意：Web 控制台里的「Seedance / Minmax H3」只是前端下拉选项与后端校验规则，**并不会自动映射到对应厂商的官方 API**。若你接的是字节 Seedance、MiniMax 等自有协议，请按它们的真实字段修改 `app/video_gen/client.py` 的 `_generic_submit` / `_generic_query`，或新增一个 provider 分支。
+> 注意：前端下拉里的「Seedance / Minmax H3」只是模型选项与后端校验规则，**并不会自动映射到对应厂商的官方 API**。若对接字节 Seedance、MiniMax 等自有协议，请按真实字段修改 `app/video_gen/client.py` 的 `_generic_submit` / `_generic_query`，或新增一个 provider 分支。
 
 ### 3.8 配置完成后自检清单
 
@@ -309,10 +330,24 @@ curl http://localhost:8000/health
 | 模块 | 功能 |
 |---|---|
 | 选题中心 | 按行业/风格/数量生成选题，展示质量分、等级、排名；勾选或按 `top_n` 一键审核优选 |
-| 视频生成 | 提交文生视频任务，按 `task_id` 查询进度或自动轮询 |
+| 视频生成（AI 视频） | 选择模型 / 比例（9:16・16:9）/ 生成方式，提交文生视频・图生视频・视频生视频・首尾帧生视频任务，按 `task_id` 查询进度或自动轮询；支持本地文件上传与预览 |
 | 知识库 | 检索 / 导入文档片段 |
 | Agent | 运行 short_video / geo / topic / video_pipeline 四类智能体 |
 | 短视频解析 | 输入链接或文案，分析结构、钩子与可复用要素 |
+
+**AI 视频模块（重点）**
+
+打开 `http://localhost:8000/` →「AI 视频」标签页：
+
+1. **先配 API（可选）**：点右上角 **⚙ API 配置**，选服务商（mock 离线联调 / DeepSeek / 豆包 / 通义 / 自定义 OpenAI 兼容），填 Base URL 与 Key，保存后即生效（存浏览器 `localStorage`）。新人可直接用 `mock` 跑通全流程。
+2. **填任务参数**：
+   - 模型：Seedance 2.0 Mini / 2.0 Fast / 2.0 标准版 / 2.5 / Minmax H3（切换模型会自动更新可选时长上限与分辨率）。
+   - 比例：横版 `16:9` / 竖版 `9:16`（竖版时分辨率自动转置，如 1920×1080 → 1080×1920）。
+   - 生成方式：文生视频 / 图生视频 / 视频生视频 / 首尾帧生视频。切换方式会自动显隐对应的参考素材输入框。
+   - 参考素材：图生视频填「参考图」、视频生视频填「参考视频」、首尾帧生视频填「首帧」+「尾帧」。支持**粘贴公网 URL** 或 **选本地文件**（本地文件会转 base64 随任务提交，并在框内预览）。
+   - 时长、分辨率、风格、提示词按模型限制填写（提交前前端 + 后端双重校验）。
+3. **提交与查询**：点「提交任务」立即拿到 `task_id` 并自动回填；用「查询进度」或「自动轮询」看状态与成片；结果区展示状态徽标、进度条与视频播放器。
+4. **代码赋值**：`window.AIVideo.set({model, duration, resolution, style, prompt, aspect_ratio, mode, ref_image, ref_video, first_frame, last_frame})` 可给表单赋值，`AIVideo.get()` 导出当前表单，便于脚本化调用。
 
 ### 重点特性：每人自带 API 配置
 
@@ -386,14 +421,52 @@ curl -X POST http://localhost:8000/api/agent/run \
   -d '{"agent_type":"short_video","user_input":"分析这条文案并推送给运营群：用AI做短视频太香了"}'
 ```
 
-**视频生成（mock 模式免密钥）**
+**视频生成（mock 模式免密钥，支持 4 种方式与 9:16/16:9）**
+
+先拉取模型 / 比例 / 生成方式清单（前端下拉即据此渲染）：
 ```bash
-# 1) 提交任务，立即返回 task_id
+curl http://localhost:8000/api/video/models
+# 返回：{"code":0,"models":[...],"aspect_ratios":["16:9","9:16"],
+#        "modes":[{"id":"text2video","name":"文生视频（仅文字）"}, ...]}
+```
+
+文生视频（横版 16:9）：
+```bash
 curl -X POST http://localhost:8000/api/video/submit \
   -H 'Content-Type: application/json' \
-  -d '{"model":"seedance_2_5","prompt":"科技感产品宣传片，蓝色调，15秒","duration":15,"resolution":"2K","style":"cinematic"}'
+  -d '{"model":"seedance_2_5","prompt":"科技感产品宣传片，蓝色调，15秒","duration":15,"resolution":"2K","style":"cinematic","mode":"text2video","aspect_ratio":"16:9"}'
+```
 
-# 2) 按返回的 task_id 查询进度
+图生视频（竖版 9:16，需 ref_image；可传 URL 或 base64 dataURL）：
+```bash
+curl -X POST http://localhost:8000/api/video/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance_2_5","prompt":"让这张图动起来","duration":10,"resolution":"1920x1080","style":"realistic","mode":"image2video","aspect_ratio":"9:16","ref_image":"https://example.com/poster.jpg"}'
+```
+
+视频生视频（参考视频 ref_video）：
+```bash
+curl -X POST http://localhost:8000/api/video/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance_2_5","prompt":"把这段视频改成水墨风格","duration":8,"resolution":"1280x720","mode":"video2video","aspect_ratio":"16:9","ref_video":"https://example.com/src.mp4"}'
+```
+
+首尾帧生视频（首帧 + 尾帧）：
+```bash
+curl -X POST http://localhost:8000/api/video/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance_2_0_std","prompt":"从首帧平滑过渡到尾帧","duration":8,"resolution":"1280x720","mode":"frame2video","aspect_ratio":"9:16","first_frame":"https://example.com/first.png","last_frame":"https://example.com/last.png"}'
+```
+
+测试 API 配置是否可连通（不实际提交计费）：
+```bash
+curl -X POST http://localhost:8000/api/video/test-config \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"generic","api_url":"https://your-api.example.com","api_key":"YOUR_KEY"}'
+```
+
+按返回的 task_id 查询进度 / 自动轮询：
+```bash
 curl http://localhost:8000/api/video/status/{video_task_id}
 ```
 
@@ -407,6 +480,25 @@ curl -X POST http://localhost:8000/api/pipeline/topic-to-video \
 ---
 
 ## 七、运行测试
+
+### 7.1 发布前自检：确认代码无报错
+
+在提交或部署前，建议跑一次下面两步，确认全项目 Python 代码可编译、测试通过：
+
+```bash
+# 1) 全量编译检查（Windows / macOS / Linux 通用）
+python -m compileall -q app tests scripts
+# 没有输出即表示全部 .py 编译通过、无语法错误
+
+# 2) 运行 pytest（无需任何密钥；知识库用 local、视频用 mock）
+pytest -q
+# 期望：12 passed（或 ≥12 passed，无 failed/error）
+```
+
+> 若出现 `ModuleNotFoundError`：多半是虚拟环境没激活或依赖没装全，回到「二、快速开始」第 3 步重装 `requirements.txt`。
+> 若 `pytest` 报某个用例失败：看报错信息定位具体文件与行号，修复后重跑即可。
+
+### 7.2 功能测试（接口级）
 
 项目内置 pytest 用例（覆盖接口、视频异步链路、选题质量增强）。**无需任何密钥**即可跑通（知识库用 local embedding、视频用 mock）：
 
@@ -566,9 +658,9 @@ ai_agent_backend/
 │   │   ├── selection.py         # TopicSelector：批量生成 + 质量增强
 │   │   ├── quality.py           # 去重/打分/热度优选（纯标准库，离线可跑）
 │   │   └── store.py             # 选题批次存储 + 人工审核
-│   ├── video_gen/               # 文生视频/图生视频（异步）
-│   │   ├── client.py            # VideoGenClient（mock/generic）
-│   │   └── generator.py         # VideoTaskManager：提交/轮询/超时/限流
+│   ├── video_gen/               # 文生视频/图生视频/视频生视频/首尾帧生视频（异步，支持 9:16/16:9）
+│   │   ├── client.py            # VideoGenClient（mock/generic，含 effective_resolution 竖版转置）
+│   │   └── generator.py         # VideoTaskManager：提交/轮询/超时/限流/重试
 │   ├── agents/                  # 业务 Agent 链路
 │   │   ├── short_video_agent.py
 │   │   ├── geo_agent.py

@@ -2,7 +2,7 @@
 第三方文生视频 / 图生视频 API 适配层（VideoGenClient）
 
 能力：
-- submit()：提交生成任务（文生视频 text2video / 图生视频 img2video），返回第三方 task_id
+- submit()：提交生成任务（text2video 文生视频 / image2video 图生视频 / video2video 视频生视频 / frame2video 首尾帧生视频），返回第三方 task_id
 - query()：按第三方 task_id 查询状态，返回 {status, progress, video_url, error}
 
 provider 模式：
