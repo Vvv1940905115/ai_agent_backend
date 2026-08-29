@@ -55,6 +55,10 @@
             <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></svg></span>
             <span class="tab-text">视频生成</span>
           </button>
+          <button class="tab" data-tab="aivideo">
+            <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"/></svg></span>
+            <span class="tab-text">AI 视频</span>
+          </button>
           <button class="tab" data-tab="knowledge">
             <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></span>
             <span class="tab-text">知识库</span>
@@ -291,6 +295,90 @@
           <div class="result-header">返回结果</div>
           <pre id="s-result" class="result-box"></pre>
         </div>
+      </section>
+
+      <!-- AI 视频异步生成 -->
+      <section id="tab-aivideo" class="panel">
+        <header class="page-head">
+          <div>
+            <h2>AI 视频异步生成</h2>
+            <p class="hint">选择模型与参数提交任务（异步），提交后通过任务 ID 查询进度并获取成片。切换模型会自动更新可选时长与分辨率。</p>
+          </div>
+        </header>
+
+        <!-- 任务参数 -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">任务参数</span></div>
+          <div class="form-grid cols-2">
+            <label class="field">
+              <span class="field-label">模型</span>
+              <select id="av-model"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">时长（秒）</span>
+              <select id="av-duration"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">分辨率</span>
+              <select id="av-resolution">
+                <option value="1280x720">1280×720</option>
+                <option value="1920x1080">1920×1080</option>
+                <option value="2K">2K</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">风格</span>
+              <select id="av-style">
+                <option value="cinematic" selected>cinematic（电影感）</option>
+                <option value="anime">anime（二次元）</option>
+                <option value="realistic">realistic（写实）</option>
+                <option value="3d">3d（三维）</option>
+                <option value="cartoon">cartoon（卡通）</option>
+              </select>
+            </label>
+          </div>
+          <label class="field block">
+            <span class="field-label">提示词 Prompt</span>
+            <textarea id="av-prompt" rows="4" placeholder="描述你想要的画面、主体、运镜、氛围……"></textarea>
+          </label>
+          <div class="actions">
+            <button id="av-submit" class="btn primary">提交任务</button>
+            <span id="av-err" class="cfg-msg err" style="margin-left:auto"></span>
+          </div>
+        </div>
+
+        <!-- 进度查询 -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">进度查询</span></div>
+          <label class="field block">
+            <span class="field-label">任务 ID</span>
+            <input id="av-taskId" type="text" placeholder="提交后自动回填，也可手动粘贴" />
+          </label>
+          <div class="actions">
+            <button id="av-query" class="btn">查询进度</button>
+            <button id="av-poll" class="btn">自动轮询</button>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-header">任务状态与成片</div>
+          <div id="av-status" class="av-status"></div>
+          <pre id="av-result" class="result-box"></pre>
+        </div>
+
+        <!-- 高级：代码回显赋值 -->
+        <details class="adv">
+          <summary>高级：代码 / JSON 回显赋值</summary>
+          <p class="hint">可在此粘贴 JSON 一次性回填表单（支持 model / duration / resolution / style / prompt / taskId），也可在浏览器控制台调用 <code>window.AIVideo.set({...})</code> 编程赋值。</p>
+          <label class="field block">
+            <span class="field-label">JSON 配置</span>
+            <textarea id="av-json" rows="5" placeholder='{"model":"seedance_2_5","duration":15,"resolution":"2K","style":"cinematic","prompt":"一只猫在太空漂浮"}'></textarea>
+          </label>
+          <div class="actions">
+            <button id="av-apply" class="btn">应用回显</button>
+            <button id="av-get" class="btn">导出当前值</button>
+          </div>
+        </details>
       </section>
     </main>
   </div>

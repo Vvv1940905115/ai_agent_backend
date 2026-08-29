@@ -35,7 +35,7 @@ class VideoTaskManager:
     # ---------- 提交任务 ----------
     def submit(self, prompt: str, duration: int = 5, resolution: str = "1280x720",
                style: str = "", ref_image: str | None = None,
-               source_topic: str | None = None,
+               source_topic: str | None = None, model: str | None = None,
                bitable_record_id: str | None = None,
                bitable_table_id: str | None = None,
                notify: bool = True) -> str:
@@ -45,7 +45,8 @@ class VideoTaskManager:
             task_id=task_id, task_type="video_generation",
             status=TaskStatus.SUBMITTED.value, created_at=now, updated_at=now,
             payload={"prompt": prompt, "duration": duration, "resolution": resolution,
-                     "style": style, "ref_image": ref_image, "source_topic": source_topic},
+                     "style": style, "model": model, "ref_image": ref_image,
+                     "source_topic": source_topic},
             bitable_record_id=bitable_record_id, bitable_table_id=bitable_table_id,
             notify=notify,
         )

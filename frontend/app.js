@@ -382,9 +382,233 @@ function bind() {
 
   $("baseUrl").addEventListener("change", (e) => { state.base = e.target.value.trim() || window.location.origin; checkHealth(); });
   $("baseUrl").value = state.base;
+
+  // AI 视频异步生成
+  $("av-submit").addEventListener("click", aiSubmit);
+  $("av-query").addEventListener("click", aiQuery);
+  $("av-poll").addEventListener("click", aiPoll);
+  $("av-apply").addEventListener("click", avApplyJson);
+  $("av-get").addEventListener("click", avExportJson);
 }
 
 bind();
+initAIVideo();
 renderLLMStatus();
 checkHealth();
 setInterval(checkHealth, 15000);
+
+// ---------- AI 视频异步生成 ----------
+// 模型规格由后端 /api/video/models 提供（单一事实来源）；前端仅做动态联动与校验。
+let avModels = [];
+let avPollTimer = null;
+
+function avFindModel(id) {
+  return avModels.find((m) => m.id === id) || null;
+}
+
+// 根据模型最大时长生成可选秒数列表（>16 秒用步长 5，并补全最大值）
+function buildDurationOptions(maxDuration) {
+  const opts = [];
+  if (maxDuration <= 16) {
+    for (let s = 1; s <= maxDuration; s++) opts.push(s);
+  } else {
+    for (let s = 5; s <= maxDuration; s += 5) opts.push(s);
+    if (opts[opts.length - 1] !== maxDuration) opts.push(maxDuration);
+  }
+  return opts;
+}
+
+async function initAIVideo() {
+  try {
+    const data = await api("/video/models");
+    avModels = (data && data.models) || [];
+  } catch (e) {
+    avModels = [];
+    console.warn("获取视频模型列表失败：", e.message);
+  }
+  const sel = $("av-model");
+  sel.innerHTML = "";
+  avModels.forEach((m) => {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.name;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", avOnModelChange);
+  if (avModels.length) avOnModelChange();
+  else $("av-err").textContent = "未能加载模型列表，请确认后端 /api/video/models 可用";
+}
+
+// 切换模型 → 动态更新时长可选项 + 置灰不支持的分辨率
+function avOnModelChange() {
+  const m = avFindModel($("av-model").value);
+  if (!m) return;
+  // 时长
+  const dur = $("av-duration");
+  const cur = parseInt(dur.value, 10);
+  const opts = buildDurationOptions(m.max_duration);
+  dur.innerHTML = "";
+  opts.forEach((s) => {
+    const o = document.createElement("option");
+    o.value = s;
+    o.textContent = s + " 秒";
+    dur.appendChild(o);
+  });
+  if (cur && cur <= m.max_duration) dur.value = cur;
+  else dur.value = opts[opts.length - 1];
+  // 分辨率：不支持的置灰不可选，并自动切到第一个支持的
+  const resSel = $("av-resolution");
+  Array.from(resSel.options).forEach((o) => { o.disabled = !m.resolutions.includes(o.value); });
+  const selOpt = resSel.options[resSel.selectedIndex];
+  if (selOpt && selOpt.disabled) {
+    const firstOk = Array.from(resSel.options).find((o) => !o.disabled);
+    if (firstOk) resSel.value = firstOk.value;
+  }
+}
+
+function avSetErr(msg) {
+  const e = $("av-err");
+  e.textContent = msg || "";
+  e.style.display = msg ? "inline" : "none";
+}
+
+function avValidate() {
+  const m = avFindModel($("av-model").value);
+  if (!m) return "请选择模型";
+  const dur = parseInt($("av-duration").value, 10);
+  if (!dur || dur <= 0) return "请选择时长";
+  if (dur > m.max_duration) return `模型 ${m.name} 最长 ${m.max_duration} 秒`;
+  const res = $("av-resolution").value;
+  if (!m.resolutions.includes(res)) return `模型 ${m.name} 不支持分辨率 ${res}`;
+  if (!$("av-prompt").value.trim()) return "请填写提示词 Prompt";
+  return null;
+}
+
+async function aiSubmit() {
+  avSetErr("");
+  const err = avValidate();
+  if (err) { avSetErr(err); toast(err, "error"); return; }
+  const btn = $("av-submit");
+  btn.disabled = true;
+  try {
+    const payload = {
+      model: $("av-model").value,
+      duration: parseInt($("av-duration").value, 10),
+      resolution: $("av-resolution").value,
+      style: $("av-style").value,
+      prompt: $("av-prompt").value.trim(),
+    };
+    const data = await api("/video/submit", { method: "POST", body: payload });
+    $("av-taskId").value = data.task_id;          // 自动回填任务 ID
+    $("av-result").textContent = JSON.stringify(data, null, 2);
+    avRenderStatus(data);
+    toast("已提交，任务 ID：" + data.task_id, "success");
+  } catch (e) {
+    avSetErr(e.message);
+    toast("提交失败：" + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function avRenderStatus(data) {
+  const box = $("av-status");
+  if (!data) { box.innerHTML = ""; return; }
+  const status = data.status || (data.payload && data.payload.status) || "未知";
+  const progress = data.progress != null ? data.progress
+    : (data.payload && data.payload.progress);
+  const videoUrl = (data.result && data.result.video_url) || data.video_url || null;
+  const tierClass = {
+    submitted: "pending", processing: "pending", rate_limited: "pending",
+    succeeded: "ok", failed: "err", timeout: "err",
+  }[status] || "pending";
+  let html = `<span class="badge ${tierClass}">${esc(status)}</span>`;
+  if (progress != null) {
+    const p = Math.max(0, Math.min(100, Number(progress) || 0));
+    html += `<div class="av-progress"><div class="av-bar" style="width:${p}%"></div></div><span class="av-pct">${p}%</span>`;
+  }
+  if (videoUrl) {
+    html += `<div class="av-video"><video src="${esc(videoUrl)}" controls></video>` +
+            `<div><a href="${esc(videoUrl)}" target="_blank" rel="noopener">打开视频链接</a></div></div>`;
+  }
+  box.innerHTML = html;
+}
+
+async function aiQuery() {
+  const id = $("av-taskId").value.trim();
+  if (!id) { toast("请填写任务 ID", "error"); return null; }
+  try {
+    const data = await api("/video/status/" + encodeURIComponent(id));
+    $("av-result").textContent = JSON.stringify(data, null, 2);
+    avRenderStatus(data);
+    return data;
+  } catch (e) {
+    toast("查询失败：" + e.message, "error");
+    return null;
+  }
+}
+
+function aiPoll() {
+  if (avPollTimer) {
+    clearInterval(avPollTimer); avPollTimer = null;
+    $("av-poll").textContent = "自动轮询";
+    return;
+  }
+  const id = $("av-taskId").value.trim();
+  if (!id) { toast("请先提交或填写任务 ID", "error"); return; }
+  $("av-poll").textContent = "停止轮询";
+  avPollTimer = setInterval(async () => {
+    const d = await aiQuery();
+    if (d) {
+      const s = d.status || (d.payload && d.payload.status);
+      if (["succeeded", "failed", "timeout"].includes(s)) {
+        clearInterval(avPollTimer); avPollTimer = null;
+        $("av-poll").textContent = "自动轮询";
+        toast("任务结束：" + s, s === "succeeded" ? "success" : "error");
+      }
+    }
+  }, 3000);
+}
+
+// 代码回显赋值：暴露全局 API，支持编程方式给表单赋值（手动选择 / 代码赋值 双通道）
+const AIVideo = {
+  set(obj = {}) {
+    if (!obj) return;
+    if (obj.model) { $("av-model").value = obj.model; avOnModelChange(); }
+    if (obj.duration != null) $("av-duration").value = obj.duration;
+    if (obj.resolution) $("av-resolution").value = obj.resolution;
+    if (obj.style) $("av-style").value = obj.style;
+    if (obj.prompt != null) $("av-prompt").value = obj.prompt;
+    if (obj.taskId != null) $("av-taskId").value = obj.taskId;
+  },
+  get() {
+    return {
+      model: $("av-model").value,
+      duration: $("av-duration").value,
+      resolution: $("av-resolution").value,
+      style: $("av-style").value,
+      prompt: $("av-prompt").value,
+      taskId: $("av-taskId").value,
+    };
+  },
+  submit: aiSubmit,
+  query: aiQuery,
+  poll: aiPoll,
+};
+window.AIVideo = AIVideo;
+
+function avApplyJson() {
+  const raw = $("av-json").value.trim();
+  if (!raw) { toast("请粘贴 JSON", "error"); return; }
+  try {
+    AIVideo.set(JSON.parse(raw));
+    toast("已应用回显", "success");
+  } catch (e) {
+    toast("JSON 解析失败：" + e.message, "error");
+  }
+}
+
+function avExportJson() {
+  $("av-json").value = JSON.stringify(AIVideo.get(), null, 2);
+  toast("已导出当前值", "success");
+}

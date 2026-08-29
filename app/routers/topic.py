@@ -73,11 +73,34 @@ def topic_batch(batch_id: str):
 
 
 # ---------- 视频生成 ----------
+# 可选模型规格：前端下拉与后端校验共用同一份事实来源
+VIDEO_MODELS = [
+    {"id": "seedance_2_0_mini", "name": "Seedance 2.0 Mini", "max_duration": 15,
+     "resolutions": ["1280x720", "1920x1080"]},
+    {"id": "seedance_2_0_fast", "name": "Seedance 2.0 Fast", "max_duration": 15,
+     "resolutions": ["1280x720", "1920x1080"]},
+    {"id": "seedance_2_0_std", "name": "Seedance 2.0 标准版", "max_duration": 15,
+     "resolutions": ["1280x720", "1920x1080"]},
+    {"id": "seedance_2_5", "name": "Seedance 2.5", "max_duration": 30,
+     "resolutions": ["1280x720", "1920x1080", "2K"]},
+    {"id": "minmax_h3", "name": "Minmax H3", "max_duration": 16,
+     "resolutions": ["1280x720", "1920x1080"]},
+]
+_MODEL_MAP = {m["id"]: m for m in VIDEO_MODELS}
+
+
+@router.get("/video/models")
+def video_models():
+    """返回可选视频生成模型及其时长上限、支持的分辨率（供前端动态渲染下拉）。"""
+    return {"code": 0, "models": VIDEO_MODELS}
+
+
 class VideoSubmitReq(BaseModel):
     prompt: str
     duration: int = 5
     resolution: str = "1280x720"
     style: str = "cinematic"
+    model: str | None = None
     ref_image: str | None = None
     source_topic: str | None = None
 
@@ -85,18 +108,29 @@ class VideoSubmitReq(BaseModel):
 @router.post("/video/submit")
 def video_submit(req: VideoSubmitReq):
     """提交视频生成任务（异步），立即返回 task_id。"""
+    if req.model:
+        spec = _MODEL_MAP.get(req.model)
+        if not spec:
+            raise BusinessError(f"不支持的模型: {req.model}", code=400)
+        if req.duration > spec["max_duration"]:
+            raise BusinessError(
+                f"模型 {spec['name']} 最长 {spec['max_duration']} 秒，当前已选 {req.duration} 秒", code=400)
+        if req.resolution not in spec["resolutions"]:
+            raise BusinessError(
+                f"模型 {spec['name']} 不支持分辨率 {req.resolution}（可选：{', '.join(spec['resolutions'])}）", code=400)
     task_id = video_task_manager.submit(
         prompt=req.prompt, duration=req.duration, resolution=req.resolution,
         style=req.style, ref_image=req.ref_image, source_topic=req.source_topic,
+        model=req.model,
     )
-    return {"code": 0, "task_id": task_id, "status": "submitted"}
+    return {"code": 0, "task_id": task_id, "status": "submitted", "model": req.model}
 
 
 @router.get("/video/status/{task_id}")
 def video_status(task_id: str):
     """按 task_id 查询视频生成任务状态与结果。"""
     rec = video_task_manager.get_status(task_id)
-    if "error" in rec:
+    if rec.get("error"):
         raise BusinessError(rec["error"], code=404)
     return {"code": 0, **rec}
 
