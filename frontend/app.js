@@ -42,7 +42,7 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ---------- 每个使用者自带 API 模型配置（存 localStorage）----------
+// ---------- 每个用户自带 API 模型配置（存 localStorage）----------
 const LLM_STORE_KEY = "ai_llm_config";
 
 // 各服务商默认模型，便于用户少填
@@ -72,7 +72,7 @@ function getLLMConfig() {
   }
 }
 
-// 把当前使用者的 API 配置并入请求体（仅对支持 llm 字段的接口生效）
+// 把当前用户的 API 配置并入请求体（仅对支持 llm 字段的接口生效）
 function withLLM(body) {
   const cfg = getLLMConfig();
   if (!cfg) return body;
