@@ -343,6 +343,7 @@ input:focus, select:focus, textarea:focus {
 .badge.ok { background: var(--green); color: #fff; }
 .badge.err { background: var(--red); color: #fff; }
 .badge.pending { background: #f59e0b; color: #fff; }
+.badge.neutral { background: var(--surface-3, #eef0f4); color: var(--text-2, #4b5563); }
 
 .av-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
 .av-status:empty { display: none; }
@@ -356,6 +357,9 @@ input:focus, select:focus, textarea:focus {
   background: #000; display: block; }
 .av-video a { font-size: 13px; color: var(--primary); text-decoration: none; }
 .av-video a:hover { text-decoration: underline; }
+
+.av-preview { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.av-preview img, .av-preview video { border: 1px solid var(--surface-3, #e5e7eb); border-radius: 8px; }
 
 .hint.inline { display: inline-block; margin-top: 8px; font-size: 12.5px; color: var(--text-2, #6b7280); }
 .hint.inline.configured { color: var(--green, #16a34a); font-weight: 600; }

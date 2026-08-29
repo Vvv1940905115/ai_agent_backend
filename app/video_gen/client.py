@@ -59,12 +59,32 @@ class VideoGenClient:
     def submit(self, prompt: str, duration: int = 5, resolution: str = "1280x720",
                style: str = "", ref_image: str | None = None,
                model: str | None = None,
+               mode: str = "text2video", aspect_ratio: str = "16:9",
+               ref_video: str | None = None, first_frame: str | None = None,
+               last_frame: str | None = None,
                api_config: dict | None = None) -> str:
         """返回第三方 task_id（provider 内部任务标识）。"""
         provider, _, _ = self._cfg(api_config)
         if provider == "mock":
             return self._mock_submit(prompt)
-        return self._generic_submit(prompt, duration, resolution, style, ref_image, model, api_config)
+        return self._generic_submit(
+            prompt, duration, resolution, style, ref_image, model,
+            mode=mode, aspect_ratio=aspect_ratio, ref_video=ref_video,
+            first_frame=first_frame, last_frame=last_frame, api_config=api_config)
+
+    @staticmethod
+    def effective_resolution(resolution: str, aspect_ratio: str) -> str:
+        """竖版(9:16)时自动交换宽高；"2K" 视为 2560x1440。返回形如 720x1280。"""
+        if aspect_ratio != "9:16":
+            return resolution
+        if resolution.lower() == "2k":
+            w, h = 2560, 1440
+        else:
+            try:
+                w, h = (int(x) for x in resolution.lower().split("x"))
+            except Exception:
+                return resolution
+        return f"{h}x{w}"
 
     # ---------- 查询任务 ----------
     def query(self, provider_task_id: str, api_config: dict | None = None) -> dict:
@@ -97,6 +117,9 @@ class VideoGenClient:
            stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10),
            reraise=True)
     def _generic_submit(self, prompt, duration, resolution, style, ref_image, model,
+                        mode: str = "text2video", aspect_ratio: str = "16:9",
+                        ref_video: str | None = None, first_frame: str | None = None,
+                        last_frame: str | None = None,
                         api_config: dict | None = None) -> str:
         provider, api_url, api_key = self._cfg(api_config)
         if provider != "mock" and (not api_url or not api_key):
@@ -104,13 +127,23 @@ class VideoGenClient:
         body = {
             "prompt": prompt,
             "duration": duration,
-            "resolution": resolution,
+            "resolution": self.effective_resolution(resolution, aspect_ratio),
+            "aspect_ratio": aspect_ratio,
             "style": style,
+            "mode": mode,
         }
         if model:
             body["model"] = model
-        if ref_image:
-            body["image"] = ref_image  # 图生视频：参考图
+        # 按生成方式注入参考素材
+        if mode == "image2video" and ref_image:
+            body["image"] = ref_image            # 图生视频：参考图
+        elif mode == "video2video" and ref_video:
+            body["video"] = ref_video            # 视频生视频：参考视频
+        elif mode == "frame2video":
+            if first_frame:
+                body["first_frame"] = first_frame
+            if last_frame:
+                body["last_frame"] = last_frame
         try:
             r = httpx.post(
                 f"{api_url.rstrip('/')}/v1/video/generations",

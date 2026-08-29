@@ -36,6 +36,9 @@ class VideoTaskManager:
     def submit(self, prompt: str, duration: int = 5, resolution: str = "1280x720",
                style: str = "", ref_image: str | None = None,
                source_topic: str | None = None, model: str | None = None,
+               mode: str = "text2video", aspect_ratio: str = "16:9",
+               ref_video: str | None = None, first_frame: str | None = None,
+               last_frame: str | None = None,
                bitable_record_id: str | None = None,
                bitable_table_id: str | None = None,
                notify: bool = True,
@@ -47,15 +50,21 @@ class VideoTaskManager:
             status=TaskStatus.SUBMITTED.value, created_at=now, updated_at=now,
             payload={"prompt": prompt, "duration": duration, "resolution": resolution,
                      "style": style, "model": model, "ref_image": ref_image,
-                     "source_topic": source_topic, "api_config": api_config},
+                     "source_topic": source_topic, "api_config": api_config,
+                     "mode": mode, "aspect_ratio": aspect_ratio,
+                     "ref_video": ref_video, "first_frame": first_frame,
+                     "last_frame": last_frame},
             bitable_record_id=bitable_record_id, bitable_table_id=bitable_table_id,
             notify=notify,
         )
         self.store.create(rec)
         logger.info("创建视频生成任务 %s", task_id)
         try:
-            pid = self.client.submit(prompt, duration, resolution, style, ref_image, model,
-                                     api_config=api_config)
+            pid = self.client.submit(
+                prompt, duration, resolution, style, ref_image, model,
+                mode=mode, aspect_ratio=aspect_ratio, ref_video=ref_video,
+                first_frame=first_frame, last_frame=last_frame,
+                api_config=api_config)
             self.store.update(task_id, provider_task_id=pid, status=TaskStatus.PROCESSING.value)
             logger.info("任务 %s 已提交第三方，provider_task_id=%s", task_id, pid)
         except RateLimitError as e:
@@ -120,6 +129,11 @@ class VideoTaskManager:
                     style=rec.payload.get("style", ""),
                     ref_image=rec.payload.get("ref_image"),
                     model=rec.payload.get("model"),
+                    mode=rec.payload.get("mode", "text2video"),
+                    aspect_ratio=rec.payload.get("aspect_ratio", "16:9"),
+                    ref_video=rec.payload.get("ref_video"),
+                    first_frame=rec.payload.get("first_frame"),
+                    last_frame=rec.payload.get("last_frame"),
                     api_config=api_config,
                 )
                 self.store.update(rec.task_id, provider_task_id=pid,

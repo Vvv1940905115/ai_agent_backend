@@ -390,6 +390,14 @@ function bind() {
   $("av-api-save").addEventListener("click", aiSaveVideoAPIConfig);
   $("av-api-clear").addEventListener("click", aiClearVideoAPIConfig);
   $("av-api-test").addEventListener("click", aiTestVideoAPIConfig);
+  // 生成方式 / 比例联动
+  $("av-mode").addEventListener("change", avOnModeChange);
+  $("av-ratio").addEventListener("change", avOnRatioChange);
+  // 参考素材：文件选择或 URL 输入
+  setupMediaRow("av-ref-image", "av-ref-image-file", "av-ref-image-prev", "image");
+  setupMediaRow("av-ref-video", "av-ref-video-file", "av-ref-video-prev", "video");
+  setupMediaRow("av-first-frame", "av-first-frame-file", "av-first-frame-prev", "image");
+  setupMediaRow("av-last-frame", "av-last-frame-file", "av-last-frame-prev", "image");
 }
 
 bind();
@@ -523,6 +531,79 @@ function avOnModelChange() {
     const firstOk = Array.from(resSel.options).find((o) => !o.disabled);
     if (firstOk) resSel.value = firstOk.value;
   }
+  // 根据比例刷新分辨率标签（竖版会转置宽高）
+  avOnRatioChange();
+}
+
+// 切换比例 → 刷新分辨率下拉标签（竖版 9:16 自动交换宽高显示）
+function avOnRatioChange() {
+  const ratio = $("av-ratio").value;
+  const resSel = $("av-resolution");
+  Array.from(resSel.options).forEach((o) => {
+    o.textContent = resolutionLabel(o.value, ratio);
+  });
+}
+
+function resolutionLabel(value, ratio) {
+  if (ratio !== "9:16") {
+    if (value === "2K") return "2K（2560×1440）";
+    return value.replace("x", "×");
+  }
+  // 竖版：交换宽高
+  let w = 2560, h = 1440;
+  if (value !== "2K") {
+    const parts = value.toLowerCase().split("x");
+    w = parseInt(parts[0], 10) || w; h = parseInt(parts[1], 10) || h;
+  }
+  if (value === "2K") return "2K 竖版（1440×2560）";
+  return `${h}×${w}`;
+}
+
+// 切换生成方式 → 显隐对应的参考素材输入区
+function avOnModeChange() {
+  const mode = $("av-mode").value;
+  $("av-ref-image-row").classList.toggle("hidden", mode !== "image2video");
+  $("av-ref-video-row").classList.toggle("hidden", mode !== "video2video");
+  const isFrame = mode === "frame2video";
+  $("av-first-frame-row").classList.toggle("hidden", !isFrame);
+  $("av-last-frame-row").classList.toggle("hidden", !isFrame);
+}
+
+// 读取本地文件为 base64 dataURL（用于无公网 URL 时直接提交参考素材）
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("文件读取失败"));
+    r.readAsDataURL(file);
+  });
+}
+
+// 绑定一个参考素材输入区：文件选择 → 转为 dataURL 填入 URL 框并预览；URL 框变化 → 预览
+function setupMediaRow(urlId, fileId, prevId, kind) {
+  const urlEl = $(urlId);
+  const fileEl = $(fileId);
+  const prevEl = $(prevId);
+  const renderPreview = (src) => {
+    if (!src) { prevEl.innerHTML = ""; return; }
+    if (kind === "video") {
+      prevEl.innerHTML = `<video src="${esc(src)}" controls muted playsinline style="max-height:160px"></video>`;
+    } else {
+      prevEl.innerHTML = `<img src="${esc(src)}" alt="预览" style="max-height:160px;border-radius:8px" />`;
+    }
+  };
+  urlEl.addEventListener("input", () => renderPreview(urlEl.value.trim()));
+  fileEl.addEventListener("change", async () => {
+    const f = fileEl.files && fileEl.files[0];
+    if (!f) return;
+    try {
+      const dataUrl = await readFileAsDataURL(f);
+      urlEl.value = dataUrl;          // 以 dataURL 形式随任务提交
+      renderPreview(dataUrl);
+    } catch (e) {
+      toast("读取文件失败：" + e.message, "error");
+    }
+  });
 }
 
 function avSetErr(msg) {
@@ -539,7 +620,14 @@ function avValidate() {
   if (dur > m.max_duration) return `模型 ${m.name} 最长 ${m.max_duration} 秒`;
   const res = $("av-resolution").value;
   if (!m.resolutions.includes(res)) return `模型 ${m.name} 不支持分辨率 ${res}`;
+  const mode = $("av-mode").value;
   if (!$("av-prompt").value.trim()) return "请填写提示词 Prompt";
+  if (mode === "image2video" && !$("av-ref-image").value.trim()) return "图生视频必须上传/填写参考图";
+  if (mode === "video2video" && !$("av-ref-video").value.trim()) return "视频生视频必须上传/填写参考视频";
+  if (mode === "frame2video") {
+    if (!$("av-first-frame").value.trim()) return "首尾帧生视频必须上传/填写首帧图";
+    if (!$("av-last-frame").value.trim()) return "首尾帧生视频必须上传/填写尾帧图";
+  }
   return null;
 }
 
@@ -549,6 +637,7 @@ async function aiSubmit() {
   if (err) { avSetErr(err); toast(err, "error"); return; }
   const btn = $("av-submit");
   btn.disabled = true;
+  const mode = $("av-mode").value;
   try {
     const payload = withVideoAPI({
       model: $("av-model").value,
@@ -556,6 +645,12 @@ async function aiSubmit() {
       resolution: $("av-resolution").value,
       style: $("av-style").value,
       prompt: $("av-prompt").value.trim(),
+      mode,
+      aspect_ratio: $("av-ratio").value,
+      ref_image: mode === "image2video" ? $("av-ref-image").value.trim() : null,
+      ref_video: mode === "video2video" ? $("av-ref-video").value.trim() : null,
+      first_frame: mode === "frame2video" ? $("av-first-frame").value.trim() : null,
+      last_frame: mode === "frame2video" ? $("av-last-frame").value.trim() : null,
     });
     const data = await api("/api/video/submit", { method: "POST", body: payload });
     $("av-taskId").value = data.task_id;          // 自动回填任务 ID
@@ -577,14 +672,22 @@ function avRenderStatus(data) {
   const progress = data.progress != null ? data.progress
     : (data.payload && data.payload.progress);
   const videoUrl = (data.result && data.result.video_url) || data.video_url || null;
+  const p = data.payload || {};
+  const modeName = {
+    text2video: "文生视频", image2video: "图生视频",
+    video2video: "视频生视频", frame2video: "首尾帧生视频",
+  }[p.mode] || p.mode || "";
+  const ratio = p.aspect_ratio || "16:9";
   const tierClass = {
     submitted: "pending", processing: "pending", rate_limited: "pending",
     succeeded: "ok", failed: "err", timeout: "err",
   }[status] || "pending";
   let html = `<span class="badge ${tierClass}">${esc(status)}</span>`;
+  if (modeName) html += `<span class="badge neutral">${esc(modeName)}</span>`;
+  if (ratio) html += `<span class="badge neutral">${esc(ratio)}</span>`;
   if (progress != null) {
-    const p = Math.max(0, Math.min(100, Number(progress) || 0));
-    html += `<div class="av-progress"><div class="av-bar" style="width:${p}%"></div></div><span class="av-pct">${p}%</span>`;
+    const pct = Math.max(0, Math.min(100, Number(progress) || 0));
+    html += `<div class="av-progress"><div class="av-bar" style="width:${pct}%"></div></div><span class="av-pct">${pct}%</span>`;
   }
   if (videoUrl) {
     html += `<div class="av-video"><video src="${esc(videoUrl)}" controls></video>` +
@@ -640,18 +743,36 @@ const AIVideo = {
       $("av-model").value = obj.model;
       avOnModelChange();
     }
+    if (obj.mode) {
+      $("av-mode").value = obj.mode;
+      avOnModeChange();
+    }
+    if (obj.aspect_ratio) {
+      $("av-ratio").value = obj.aspect_ratio;
+      avOnRatioChange();
+    }
     if (obj.duration != null) $("av-duration").value = obj.duration;
     if (obj.resolution) $("av-resolution").value = obj.resolution;
     if (obj.style) $("av-style").value = obj.style;
+    if (obj.ref_image != null) $("av-ref-image").value = obj.ref_image;
+    if (obj.ref_video != null) $("av-ref-video").value = obj.ref_video;
+    if (obj.first_frame != null) $("av-first-frame").value = obj.first_frame;
+    if (obj.last_frame != null) $("av-last-frame").value = obj.last_frame;
     if (obj.prompt != null) $("av-prompt").value = obj.prompt;
     if (obj.taskId != null) $("av-taskId").value = obj.taskId;
   },
   get() {
     return {
       model: $("av-model").value,
+      mode: $("av-mode").value,
+      aspect_ratio: $("av-ratio").value,
       duration: $("av-duration").value,
       resolution: $("av-resolution").value,
       style: $("av-style").value,
+      ref_image: $("av-ref-image").value,
+      ref_video: $("av-ref-video").value,
+      first_frame: $("av-first-frame").value,
+      last_frame: $("av-last-frame").value,
       prompt: $("av-prompt").value,
       taskId: $("av-taskId").value,
     };

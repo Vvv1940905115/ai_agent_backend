@@ -88,11 +88,24 @@ VIDEO_MODELS = [
 ]
 _MODEL_MAP = {m["id"]: m for m in VIDEO_MODELS}
 
+# 支持的比例（横版 / 竖版）
+ASPECT_RATIOS = ["16:9", "9:16"]
+
+# 支持的生成方式：文生视频 / 图生视频 / 视频生视频 / 首尾帧生视频
+GEN_MODES = [
+    {"id": "text2video", "name": "文生视频（仅文字）"},
+    {"id": "image2video", "name": "图生视频（参考图）"},
+    {"id": "video2video", "name": "视频生视频（参考视频）"},
+    {"id": "frame2video", "name": "首尾帧生视频（首帧+尾帧）"},
+]
+_MODE_SET = {m["id"] for m in GEN_MODES}
+
 
 @router.get("/video/models")
 def video_models():
-    """返回可选视频生成模型及其时长上限、支持的分辨率（供前端动态渲染下拉）。"""
-    return {"code": 0, "models": VIDEO_MODELS}
+    """返回可选视频生成模型、支持的比例、生成方式（供前端动态渲染下拉）。"""
+    return {"code": 0, "models": VIDEO_MODELS,
+            "aspect_ratios": ASPECT_RATIOS, "modes": GEN_MODES}
 
 
 class VideoApiConfig(BaseModel):
@@ -108,7 +121,12 @@ class VideoSubmitReq(BaseModel):
     resolution: str = "1280x720"
     style: str = "cinematic"
     model: str | None = None
-    ref_image: str | None = None
+    mode: str = "text2video"            # 生成方式：text2video / image2video / video2video / frame2video
+    aspect_ratio: str = "16:9"          # 比例：16:9 横版 / 9:16 竖版
+    ref_image: str | None = None        # 图生视频：参考图 URL / dataURL
+    ref_video: str | None = None        # 视频生视频：参考视频 URL / dataURL
+    first_frame: str | None = None      # 首尾帧生视频：首帧图
+    last_frame: str | None = None       # 首尾帧生视频：尾帧图
     source_topic: str | None = None
     api_config: VideoApiConfig | None = None   # 可选：前端自定义 API 入口
 
@@ -116,6 +134,12 @@ class VideoSubmitReq(BaseModel):
 @router.post("/video/submit")
 def video_submit(req: VideoSubmitReq):
     """提交视频生成任务（异步），立即返回 task_id。"""
+    if req.mode not in _MODE_SET:
+        raise BusinessError(
+            f"不支持的生成方式: {req.mode}（可选：{', '.join(sorted(_MODE_SET))}）", code=400)
+    if req.aspect_ratio not in ASPECT_RATIOS:
+        raise BusinessError(
+            f"不支持的比例: {req.aspect_ratio}（可选：{', '.join(ASPECT_RATIOS)}）", code=400)
     if req.model:
         spec = _MODEL_MAP.get(req.model)
         if not spec:
@@ -126,16 +150,28 @@ def video_submit(req: VideoSubmitReq):
         if req.resolution not in spec["resolutions"]:
             raise BusinessError(
                 f"模型 {spec['name']} 不支持分辨率 {req.resolution}（可选：{', '.join(spec['resolutions'])}）", code=400)
+    # 各生成方式的必填参考项校验
+    if req.mode == "image2video" and not req.ref_image:
+        raise BusinessError("图生视频必须提供参考图（ref_image）", code=400)
+    if req.mode == "video2video" and not req.ref_video:
+        raise BusinessError("视频生视频必须提供参考视频（ref_video）", code=400)
+    if req.mode == "frame2video":
+        if not req.first_frame:
+            raise BusinessError("首尾帧生视频必须提供首帧图（first_frame）", code=400)
+        if not req.last_frame:
+            raise BusinessError("首尾帧生视频必须提供尾帧图（last_frame）", code=400)
     if req.api_config and req.api_config.provider != "mock":
         if not req.api_config.api_url or not req.api_config.api_key:
             raise BusinessError("generic 模式必须填写 API URL 与 API Key", code=400)
     task_id = video_task_manager.submit(
         prompt=req.prompt, duration=req.duration, resolution=req.resolution,
         style=req.style, ref_image=req.ref_image, source_topic=req.source_topic,
-        model=req.model,
+        model=req.model, mode=req.mode, aspect_ratio=req.aspect_ratio,
+        ref_video=req.ref_video, first_frame=req.first_frame, last_frame=req.last_frame,
         api_config=req.api_config.model_dump() if req.api_config else None,
     )
-    return {"code": 0, "task_id": task_id, "status": "submitted", "model": req.model}
+    return {"code": 0, "task_id": task_id, "status": "submitted",
+            "model": req.model, "mode": req.mode, "aspect_ratio": req.aspect_ratio}
 
 
 @router.post("/video/test-config")
@@ -151,6 +187,8 @@ def video_test_config(cfg: VideoApiConfig):
         client._generic_submit(
             prompt="ping", duration=1, resolution="1280x720",
             style="cinematic", ref_image=None, model="ping",
+            mode="text2video", aspect_ratio="16:9",
+            ref_video=None, first_frame=None, last_frame=None,
             api_config=cfg.model_dump(),
         )
         return {"code": 0, "ok": True, "message": "连接成功"}
