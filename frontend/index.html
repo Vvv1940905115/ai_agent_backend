@@ -51,10 +51,6 @@
             <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg></span>
             <span class="tab-text">选题中心</span>
           </button>
-          <button class="tab" data-tab="video">
-            <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></svg></span>
-            <span class="tab-text">视频生成</span>
-          </button>
           <button class="tab" data-tab="aivideo">
             <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"/></svg></span>
             <span class="tab-text">AI 视频</span>
@@ -127,62 +123,6 @@
 
         <div id="t-summary" class="summary hidden"></div>
         <div id="t-list" class="card-grid"></div>
-      </section>
-
-      <!-- 视频生成 -->
-      <section id="tab-video" class="panel">
-        <header class="page-head">
-          <div>
-            <h2>视频生成</h2>
-            <p class="hint">提交文生视频任务（异步），拿到任务 ID 后轮询进度。</p>
-          </div>
-        </header>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">任务参数</span>
-          </div>
-          <label class="field block">
-            <span class="field-label">视频提示词 (prompt)</span>
-            <textarea id="v-prompt" rows="4" placeholder="根据脚本生成的视频提示词"></textarea>
-          </label>
-          <div class="form-grid cols-3">
-            <label class="field">
-              <span class="field-label">时长（秒）</span>
-              <input id="v-duration" type="number" value="5" min="1" max="60" />
-            </label>
-            <label class="field">
-              <span class="field-label">分辨率</span>
-              <input id="v-resolution" type="text" value="1280x720" />
-            </label>
-            <label class="field">
-              <span class="field-label">风格</span>
-              <input id="v-style" type="text" value="cinematic" />
-            </label>
-          </div>
-          <div class="actions">
-            <button id="btnVSubmit" class="btn primary">提交任务</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">进度查询</span>
-          </div>
-          <label class="field block">
-            <span class="field-label">任务 ID</span>
-            <input id="v-taskId" type="text" placeholder="提交后自动填入，也可手动粘贴" />
-          </label>
-          <div class="actions">
-            <button id="btnVQuery" class="btn">查询进度</button>
-            <button id="btnVAuto" class="btn">自动轮询</button>
-          </div>
-        </div>
-
-        <div class="result-card">
-          <div class="result-header">返回结果</div>
-          <pre id="v-result" class="result-box"></pre>
-        </div>
       </section>
 
       <!-- 知识库 -->

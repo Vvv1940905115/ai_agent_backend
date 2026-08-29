@@ -4,7 +4,6 @@
 const state = {
   base: window.location.origin,
   lastBatchId: null,
-  pollTimer: null,
 };
 
 // ---------- 工具函数 ----------
@@ -258,54 +257,6 @@ async function approveTopics() {
   }
 }
 
-// ---------- 视频生成 ----------
-async function submitVideo() {
-  const prompt = $("v-prompt").value.trim();
-  if (!prompt) { toast("请填写视频提示词", "error"); return; }
-  try {
-    const data = await api("/api/video/submit", {
-      method: "POST",
-      body: {
-        prompt,
-        duration: parseInt($("v-duration").value, 10) || 5,
-        resolution: $("v-resolution").value.trim() || "1280x720",
-        style: $("v-style").value.trim() || "cinematic",
-      },
-    });
-    $("v-taskId").value = data.task_id;
-    $("v-result").textContent = JSON.stringify(data, null, 2);
-    toast("已提交，任务 ID：" + data.task_id, "success");
-  } catch (e) {
-    toast("提交失败：" + e.message, "error");
-  }
-}
-
-async function queryVideo() {
-  const id = $("v-taskId").value.trim();
-  if (!id) { toast("请填写任务 ID", "error"); return; }
-  try {
-    const data = await api("/api/video/status/" + encodeURIComponent(id));
-    $("v-result").textContent = JSON.stringify(data, null, 2);
-    return data;
-  } catch (e) {
-    toast("查询失败：" + e.message, "error");
-    return null;
-  }
-}
-
-async function autoPoll() {
-  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; $("btnVAuto").textContent = "自动轮询"; return; }
-  $("btnVAuto").textContent = "停止轮询";
-  state.pollTimer = setInterval(async () => {
-    const d = await queryVideo();
-    if (d && (d.status === "succeeded" || d.status === "failed" || d.status === "done")) {
-      clearInterval(state.pollTimer); state.pollTimer = null;
-      $("btnVAuto").textContent = "自动轮询";
-      toast("任务结束：" + d.status, "success");
-    }
-  }, 5000);
-}
-
 // ---------- 知识库 ----------
 async function kbSearch() {
   const q = $("k-query").value.trim();
@@ -358,9 +309,6 @@ async function analyze() {
 function bind() {
   $("btnGen").addEventListener("click", genTopics);
   $("btnApprove").addEventListener("click", approveTopics);
-  $("btnVSubmit").addEventListener("click", submitVideo);
-  $("btnVQuery").addEventListener("click", queryVideo);
-  $("btnVAuto").addEventListener("click", autoPoll);
   $("btnKSearch").addEventListener("click", kbSearch);
   $("btnKIngest").addEventListener("click", kbIngest);
   $("btnARun").addEventListener("click", runAgent);
