@@ -258,6 +258,25 @@ curl http://localhost:8000/health
 | `VIDEO_GEN_MOCK_DELAY` | `2` | mock 模式模拟生成耗时（秒） |
 | `WECOM_NOTIFY_USER` | `@all` | 任务状态变更通知的企微接收人（`@all` 或具体 userid） |
 
+**`generic` 适配器默认契约（OpenAI 兼容风格）**
+
+提交：`POST {VIDEO_GEN_API_URL}/v1/video/generations`
+```json
+{
+  "model": "seedance_2_5",
+  "prompt": "...",
+  "duration": 15,
+  "resolution": "2K",
+  "style": "cinematic"
+}
+```
+响应需返回 `id` / `task_id` / `taskId` 任意一个。
+
+查询：`GET {VIDEO_GEN_API_URL}/v1/video/generations/{task_id}`
+响应需返回 `status`/`state`、`progress`、`video_url`/`url`/`output`、`error`。
+
+> 注意：Web 控制台里的「Seedance / Minmax H3」只是前端下拉选项与后端校验规则，**并不会自动映射到对应厂商的官方 API**。若你接的是字节 Seedance、MiniMax 等自有协议，请按它们的真实字段修改 `app/video_gen/client.py` 的 `_generic_submit` / `_generic_query`，或新增一个 provider 分支。
+
 ### 3.8 配置完成后自检清单
 
 - [ ] 已复制出 `.env`（不是改 `.env.example`）
@@ -372,7 +391,7 @@ curl -X POST http://localhost:8000/api/agent/run \
 # 1) 提交任务，立即返回 task_id
 curl -X POST http://localhost:8000/api/video/submit \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"科技感产品宣传片，蓝色调，15秒","duration":5,"resolution":"1280x720","style":"cinematic"}'
+  -d '{"model":"seedance_2_5","prompt":"科技感产品宣传片，蓝色调，15秒","duration":15,"resolution":"2K","style":"cinematic"}'
 
 # 2) 按返回的 task_id 查询进度
 curl http://localhost:8000/api/video/status/{video_task_id}

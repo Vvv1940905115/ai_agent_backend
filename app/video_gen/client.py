@@ -47,11 +47,12 @@ class VideoGenClient:
 
     # ---------- 提交任务 ----------
     def submit(self, prompt: str, duration: int = 5, resolution: str = "1280x720",
-               style: str = "", ref_image: str | None = None) -> str:
+               style: str = "", ref_image: str | None = None,
+               model: str | None = None) -> str:
         """返回第三方 task_id（provider 内部任务标识）。"""
         if self.provider == "mock":
             return self._mock_submit(prompt)
-        return self._generic_submit(prompt, duration, resolution, style, ref_image)
+        return self._generic_submit(prompt, duration, resolution, style, ref_image, model)
 
     # ---------- 查询任务 ----------
     def query(self, provider_task_id: str) -> dict:
@@ -82,7 +83,7 @@ class VideoGenClient:
     @retry(retry=retry_if_exception_type(RateLimitError),
            stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10),
            reraise=True)
-    def _generic_submit(self, prompt, duration, resolution, style, ref_image) -> str:
+    def _generic_submit(self, prompt, duration, resolution, style, ref_image, model) -> str:
         if not self.api_url or not self.api_key:
             raise VideoGenError("缺少 VIDEO_GEN_API_URL / VIDEO_GEN_API_KEY")
         body = {
@@ -91,6 +92,8 @@ class VideoGenClient:
             "resolution": resolution,
             "style": style,
         }
+        if model:
+            body["model"] = model
         if ref_image:
             body["image"] = ref_image  # 图生视频：参考图
         try:

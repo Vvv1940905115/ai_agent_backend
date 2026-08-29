@@ -53,7 +53,7 @@ class VideoTaskManager:
         self.store.create(rec)
         logger.info("创建视频生成任务 %s", task_id)
         try:
-            pid = self.client.submit(prompt, duration, resolution, style, ref_image)
+            pid = self.client.submit(prompt, duration, resolution, style, ref_image, model)
             self.store.update(task_id, provider_task_id=pid, status=TaskStatus.PROCESSING.value)
             logger.info("任务 %s 已提交第三方，provider_task_id=%s", task_id, pid)
         except RateLimitError as e:
@@ -116,6 +116,7 @@ class VideoTaskManager:
                     resolution=rec.payload.get("resolution", "1280x720"),
                     style=rec.payload.get("style", ""),
                     ref_image=rec.payload.get("ref_image"),
+                    model=rec.payload.get("model"),
                 )
                 self.store.update(rec.task_id, provider_task_id=pid,
                                   status=TaskStatus.PROCESSING.value, error=None)
